@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+.next/
+out/
+build/
+dist/
+target/
+anchor.log
+./.anchor/
+test-ledger/
+
+# program id / deploy artifacts
+programs/**/deploy/
+target/deploy/*.json
+
+# local keys — never commit
+.keys/
+*.keypair.json
+id.json
+
+# env
+.env
+.env.*
+!.env.example
+
+# caches
+.turbo/
+.eslintcache
+*.tsbuildinfo
+coverage/
+
+# editor / os / agent scratch
+.DS_Store
+.idea/
+.vscode/
+.qwen/
