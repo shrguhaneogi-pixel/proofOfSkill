@@ -15,6 +15,7 @@ import "server-only";
 import { z } from "zod";
 
 import { MIN_KEY_BYTES, keyBytesFromMaterial } from "./attestation/sign";
+import { resolveRpcUrl } from "./solana/connection";
 
 export const SOLANA_NETWORKS = ["localnet", "devnet", "testnet", "mainnet-beta"] as const;
 
@@ -111,22 +112,45 @@ function readValidated<T>(
 }
 
 /**
- * Validates the whole environment. The public trio and `ATTESTATION_SECRET` are
- * required for the app to mean anything; the evaluator and the issuer key are
- * reported as `null` on the data object instead of failing, because a partially
- * configured server still has pages to serve.
+ * Optional override. Absent or blank means "use the cluster's public endpoint",
+ * which `lib/solana/connection.ts` already resolves. A value that is present but
+ * malformed is still an error: a typo would silently point the app at the wrong
+ * cluster, and that is worse than an unset variable.
+ */
+function readOptionalValidated<T>(
+  source: EnvSource,
+  key: EnvKey,
+  schema: z.ZodType<T>,
+  errors: string[],
+): T | null {
+  const raw = readRaw(source, key);
+  if (raw === null) {
+    return null;
+  }
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    return invalid(key, errors);
+  }
+  return parsed.data;
+}
+
+/**
+ * Validates the whole environment. `ATTESTATION_SECRET` and the program id are
+ * required for the app to mean anything; the RPC URL is an override, and the
+ * evaluator and the issuer key are reported as `null` on the data object instead
+ * of failing, because a partially configured server still has pages to serve.
  */
 export function parseEnv(source: EnvSource = process.env): EnvResult {
   const errors: string[] = [];
 
   const network = readValidated(source, "NEXT_PUBLIC_SOLANA_NETWORK", NETWORK_SCHEMA, errors);
-  const rpcUrl = readValidated(source, "NEXT_PUBLIC_SOLANA_RPC_URL", HTTP_URL_SCHEMA, errors);
+  const rpcUrl = readOptionalValidated(source, "NEXT_PUBLIC_SOLANA_RPC_URL", HTTP_URL_SCHEMA, errors);
   const programId = readValidated(source, "NEXT_PUBLIC_PROGRAM_ID", BASE58_SCHEMA, errors);
   const attestation = parseAttestationSecret(source, errors);
   const ai = parseAiGroup(source, errors);
   const issuerSecretKey = parseIssuerKey(source, errors);
 
-  if (network === null || rpcUrl === null || programId === null || attestation === null) {
+  if (network === null || programId === null || attestation === null) {
     // Each `null` above already pushed a message; the fallback only keeps the
     // narrowing honest without a non-null assertion.
     return { ok: false, error: errors.length > 0 ? errors : [GENERIC_FAILURE_MESSAGE] };
@@ -137,7 +161,14 @@ export function parseEnv(source: EnvSource = process.env): EnvResult {
 
   return {
     ok: true,
-    data: { network, rpcUrl, programId, ai, issuerSecretKey, attestationKeyBytes: attestation },
+    data: {
+      network,
+      rpcUrl: rpcUrl ?? resolveRpcUrl(network),
+      programId,
+      ai,
+      issuerSecretKey,
+      attestationKeyBytes: attestation,
+    },
   };
 }
 

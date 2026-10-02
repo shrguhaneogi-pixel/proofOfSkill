@@ -58,9 +58,9 @@ describe("parseEnv", () => {
   it("reports every required key that is missing, by name", () => {
     const result = parseEnv({});
     expect(result.ok).toBe(false);
+    // The RPC url is not in this list: it is an override with a per-cluster default.
     for (const key of [
       "NEXT_PUBLIC_SOLANA_NETWORK",
-      "NEXT_PUBLIC_SOLANA_RPC_URL",
       "NEXT_PUBLIC_PROGRAM_ID",
       "ATTESTATION_SECRET",
     ]) {
@@ -83,11 +83,34 @@ describe("parseEnv", () => {
     }
   });
 
-  it("requires an http(s) rpc url", () => {
+  it("accepts an http(s) rpc url and rejects a malformed one", () => {
     expect(parseEnv(withEnv({ NEXT_PUBLIC_SOLANA_RPC_URL: "127.0.0.1:8899" })).ok).toBe(false);
     expect(parseEnv(withEnv({ NEXT_PUBLIC_SOLANA_RPC_URL: "http://127.0.0.1:8899" })).ok).toBe(
       true,
     );
+  });
+
+  it("falls back to the cluster endpoint when the rpc url is unset", () => {
+    const withoutOverride: Record<string, string> = {
+      NEXT_PUBLIC_SOLANA_NETWORK: "devnet",
+      NEXT_PUBLIC_PROGRAM_ID: PROGRAM_ID,
+      ATTESTATION_SECRET: SECRET,
+    };
+
+    const devnet = parseEnv(withoutOverride);
+    expect(devnet.ok).toBe(true);
+    if (devnet.ok) {
+      expect(devnet.data.rpcUrl).toBe("https://api.devnet.solana.com");
+    }
+
+    const localnet = parseEnv({
+      ...withoutOverride,
+      NEXT_PUBLIC_SOLANA_NETWORK: "localnet",
+    });
+    expect(localnet.ok).toBe(true);
+    if (localnet.ok) {
+      expect(localnet.data.rpcUrl).toBe("http://127.0.0.1:8899");
+    }
   });
 
   it("rejects a program id outside the base58 alphabet", () => {
@@ -161,7 +184,6 @@ describe("parseEnv", () => {
     }
     expect(envKeysIn(result.error)).toEqual([
       "NEXT_PUBLIC_SOLANA_NETWORK",
-      "NEXT_PUBLIC_SOLANA_RPC_URL",
       "NEXT_PUBLIC_PROGRAM_ID",
       "ATTESTATION_SECRET",
     ]);
@@ -209,7 +231,6 @@ describe("requireEnv", () => {
     expect(thrown.name).toBe("EnvNotConfiguredError");
     expect(thrown.missingKeys).toEqual([
       "NEXT_PUBLIC_SOLANA_NETWORK",
-      "NEXT_PUBLIC_SOLANA_RPC_URL",
       "NEXT_PUBLIC_PROGRAM_ID",
       "ATTESTATION_SECRET",
     ]);
