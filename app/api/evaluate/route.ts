@@ -108,8 +108,8 @@ export async function POST(request: Request) {
   const result = outcome.data;
   const body: typeof result & { attestation?: string } = { ...result };
 
-  // The fallback reports a pass-shaped object never reaches here: it scores 0.
-  // Everything above this line is what makes "passed" a server-side fact.
+  // A dev-fallback result scores 0, so canMintAttestation() rejects it and nothing
+  // here can turn a non-evaluation into an issuable pass.
   if (canMintAttestation(result)) {
     const signed = signAttestation(
       {
@@ -117,12 +117,18 @@ export async function POST(request: Request) {
         score: result.score,
         evidenceHash: result.evidenceHash,
       },
-      // `signAttestation` takes key material; env already holds decoded bytes.
-      // Re-encoding as hex round-trips to the identical key.
+      // Passed explicitly from the already-validated env rather than letting the
+      // signer read `process.env` itself, so there is one validation path. The
+      // decoded key bytes are re-encoded as hex, which round-trips identically.
       { secret: bytesToHex(env.attestationKeyBytes) },
     );
+
     if (signed.ok) {
       body.attestation = signed.data;
+    } else {
+      // Without this the user just sees "Pass · not issuable" and no operator
+      // trace exists. The message names the offending key, never its value.
+      console.error(`attestation minting failed for challenge ${result.challengeId}: ${signed.error}`);
     }
   }
 
