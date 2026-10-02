@@ -1,0 +1,29 @@
+[package]
+name = "proof_of_skill"
+version = "0.1.0"
+description = "ProofOfSkill — verifiable onchain skill credentials"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "proof_of_skill"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.29.0"
+
+# anchor-lang 0.29 codegen tests cfgs that rustc cannot see from the defining
+# crate. Declaring them keeps `unexpected_cfgs` active instead of allowing it.
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = -1
+check-cfg = [
+    'cfg(feature, values("anchor-debug", "custom-heap", "custom-panic"))',
+    'cfg(target_os, values("solana"))',
+]

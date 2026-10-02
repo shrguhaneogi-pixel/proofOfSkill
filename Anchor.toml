@@ -1,0 +1,21 @@
+[toolchain]
+
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+proof_of_skill = "5BLtjKxvax6xxVp6xF3wgmaV3NbmXwbdGsM1sytsqji3"
+
+[programs.devnet]
+proof_of_skill = "5BLtjKxvax6xxVp6xF3wgmaV3NbmXwbdGsM1sytsqji3"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "pnpm exec ts-mocha -p ./tests/tsconfig.json -t 1000000 tests/**/*.ts"
