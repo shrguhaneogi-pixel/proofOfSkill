@@ -6,7 +6,7 @@
 - Files under 300 lines, components under 200. Split by responsibility.
 - Named exports. Default exports only where Next.js requires them (`page.tsx`, `layout.tsx`, `route.ts` handlers are named by HTTP verb).
 - File names `kebab-case.ts(x)`; components `PascalCase`; hooks `useX`; constants `SCREAMING_SNAKE_CASE`.
-- Variables holding derived program addresses end in `_pda` (`profile_pda` in Rust, `profilePda` is NOT used — use `profile_pda` in TS too for grep-ability). Seed constants end in `_SEED`.
+- Variables holding a derived program address end in `_pda` in **both** Rust and TypeScript (`profile_pda`, `credential_pda`) for grep-ability. This applies to locals and destructured tuples, not to the JSON wire format: object keys that cross the API boundary stay camelCase (`credentialPda`, `profilePda`) because `docs/api-schema.md` fixes that response shape, and a snake_case key would change the contract. Destructure with the convention, e.g. `const { pda: credential_pda } = credentialPda(...)`. Seed constants end in `_SEED`.
 - Types co-located with their module; shared types in `lib/types/`. No barrel files that re-export entire folders.
 - Errors: return typed results (`{ ok: true, data } | { ok: false, error }`) from `lib/` functions; throw only for programmer errors. Map to user messages in `lib/errors/`.
 - Comments explain why, not what. Every `/// CHECK:` in Rust and every non-obvious constraint is commented.

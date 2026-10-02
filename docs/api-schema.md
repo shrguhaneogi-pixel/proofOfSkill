@@ -110,7 +110,7 @@ Apply per-IP in-memory rate limiting (simple, documented as MVP-grade) and a req
 
 ### POST /api/issue
 Body: `{ attestation: string, wallet: string /* base58 */ }`.
-Steps: verify attestation → validate wallet as a PublicKey → fetch Config, Profile, Credential PDAs → if Credential exists return `409 CREDENTIAL_EXISTS` → build `VersionedTransaction` with `[initialize_profile (if absent), issue_credential(challengeId, score, evidenceHash)]`, fee payer = wallet, recent blockhash from RPC → `partialSign` with the issuer keypair → return:
+Steps: verify attestation → validate wallet as a PublicKey → fetch Config, Profile, Credential PDAs → if Credential exists return `409 CREDENTIAL_EXISTS` → build `VersionedTransaction` with `[initialize_profile (if absent), issue_credential(challengeId, score, evidenceHash)]`, fee payer = wallet, recent blockhash from RPC → co-sign with the issuer keypair via `transaction.sign([issuer])` → return:
 ```ts
 { transaction: string /* base64 */, blockhash: string, lastValidBlockHeight: number,
   credentialPda: string, profilePda: string }

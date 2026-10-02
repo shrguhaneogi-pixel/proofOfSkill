@@ -63,6 +63,10 @@ Use the right-hand column. Verify against installed versions when in doubt.
 | Wallet | `@solana/wallet-adapter-wallets` mega-package | not installed |
 | Web3.js | `Transaction` + `recentBlockhash` legacy flow for new code; `sendAndConfirmTransaction` in the browser | `VersionedTransaction` with `TransactionMessage(...).compileToV0Message()`; `wallet.sendTransaction`; `connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed")` |
 | Web3.js | `confirmTransaction(signature)` (string-only form) | the blockhash-strategy object form above |
+| Web3.js | `VersionedTransaction.partialSign(signers)` — **does not exist** in 1.99.0 (only legacy `Transaction` has it; verified in `lib/index.d.ts`) | `transaction.sign([issuer])`: on a `VersionedTransaction` it signs only the slots it is handed and leaves the rest zero, which *is* the partial sign the wallet then completes |
+| Web3.js | `new Connection(url, { confirmTransactionCommitment })` (a `@solana/kit` field) | `new Connection(url, { commitment })` |
+| Web3.js | `clusterApiUrl("localnet")` — not a valid `Cluster` | `http://127.0.0.1:8899` for localnet |
+| Web3.js | passing `Uint8Array` as `TransactionInstruction.data` | `Buffer.from(bytes)` — and keep that module server-side, since the browser bundle has no `Buffer` |
 | Anchor (Rust) | `ctx.bumps.get("name")`; `init_if_needed`; manual space math | `ctx.bumps.name`; plain `init`; `#[derive(InitSpace)]` + `space = 8 + Type::INIT_SPACE` |
 | Anchor (Rust) | `msg!` as the event mechanism | `#[event]` + `emit!` |
 | Anchor (TS) | `anchor.setProvider` in app code; `Program` constructed with `(idl, programId, provider)` | `new Program(idl, provider)` — program address comes from the IDL `address` field |
