@@ -13,13 +13,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { CHALLENGE_IDS } from "../challenges/types";
+import { MAX_SCORE, PASS_THRESHOLD } from "../program-contract";
 
 export const ATTESTATION_SECRET_ENV = "ATTESTATION_SECRET";
 
-/** Rejection below this score is meaningless for a credential, so never mint one. */
-export const PASS_THRESHOLD = 70;
-
-export const MAX_SCORE = 100;
+// A score below the pass threshold can never become a credential, so these come from the single
+// module that mirrors the onchain constants instead of being restated here.
+export { MAX_SCORE, PASS_THRESHOLD };
 
 /** Short-lived by design: the MVP token is not bound to a wallet (see README limitations). */
 export const ATTESTATION_TTL_SECONDS = 15 * 60;

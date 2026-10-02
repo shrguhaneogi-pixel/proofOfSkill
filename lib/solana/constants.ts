@@ -29,10 +29,16 @@ export const DEFAULT_PROGRAM_ID = "5BLtjKxvax6xxVp6xF3wgmaV3NbmXwbdGsM1sytsqji3"
 /** Base58 of `bpf_loader_upgradeable::id()`, the owner of every ProgramData account. */
 export const UPGRADE_LOADER_PROGRAM_ID = "BPFLoaderUpgradeab1e11111111111111111111111";
 
-export const MIN_CHALLENGE_ID = 1;
-export const MAX_CHALLENGE_ID = 5;
-export const MAX_SCORE = 100;
-export const PASS_THRESHOLD = 70;
+// Re-exported rather than restated: lib/program-contract.ts mirrors the Rust constants, and the
+// import binding keeps these names usable inside this file.
+import {
+  MAX_CHALLENGE_ID,
+  MAX_SCORE,
+  MIN_CHALLENGE_ID,
+  PASS_THRESHOLD,
+} from "../program-contract";
+
+export { MAX_CHALLENGE_ID, MAX_SCORE, MIN_CHALLENGE_ID, PASS_THRESHOLD };
 
 const CHALLENGE_ID_SET: ReadonlySet<number> = new Set<number>(CHALLENGE_IDS);
 

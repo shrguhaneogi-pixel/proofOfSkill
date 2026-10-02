@@ -8,9 +8,11 @@
  */
 
 import type { ChallengeId } from "../challenges/types";
+import { PASS_THRESHOLD } from "../program-contract";
 
-/** Passing bar for a credential. Fixed by the spec, not by the model. */
-export const PASS_THRESHOLD = 70 as const;
+// The passing bar is fixed by the program, not by the model or this service, so it is imported
+// from the module that mirrors the onchain constants rather than restated here.
+export { PASS_THRESHOLD };
 
 /**
  * Stable error codes for a failed evaluation. `docs/api-schema.md` → ROUTES
