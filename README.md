@@ -33,31 +33,37 @@
 > [!IMPORTANT]
 > The sections below describe the intended architecture. This section tracks what is **actually built and verified right now**, and is updated as work lands.
 
-**Verified on this machine** — the program compiles clean for the host target (`cargo check`), passes `cargo clippy -- -D warnings` and `cargo fmt --check`, and **28 `cargo test` assertions pass**, pinning account discriminators, serialized byte offsets, `INIT_SPACE` totals (73 / 57 / 115), instruction sighashes and all seven PDA derivations against vectors computed independently with `@solana/web3.js`. `vitest` unit tests are green for the challenge catalogue and evidence hashing.
+**Verified on this machine** — the program compiles clean for the host target (`cargo check`), passes `cargo clippy -- -D warnings` and `cargo fmt --check`, and **28 `cargo test` assertions pass**, pinning account discriminators, serialized byte offsets, `INIT_SPACE` totals (73 / 57 / 115), instruction sighashes and all seven PDA derivations against vectors computed independently with `@solana/web3.js`. On the app side: **340 vitest tests pass**, `pnpm typecheck`, `pnpm lint` and `pnpm build` (14 routes) are clean, and an **18-check HTTP smoke run against `pnpm dev`** confirms every page renders and that `/api/evaluate` and `/api/issue` reject forged, tampered and wrong-secret attestations. The `/verify` page reads **real Devnet RPC** successfully.
 
 **Blocked on this host** — `anchor build` / `anchor test` cannot run: anchor-cli 0.29 invokes the legacy `cargo-build-bpf`, and `cargo build-sbf` needs privileges to symlink platform-tools. So there is no `.so`, no IDL, no Devnet deployment and therefore **no real transaction signature** yet. Details: [docs/living-notes.md](./docs/living-notes.md) → Blockers.
 
 ### MVP checklist
 
+Counts below are measured from this session's runs, not estimates.
+
 - [x] Phase 0 — repository audit, `.gitignore`, toolchain and package versions resolved
-- [x] Phase 1 — Anchor program source: `initialize_config`, `initialize_profile`, `issue_credential` (verified by host `cargo check` + `clippy`)
+- [x] Phase 1 — Anchor program source: `initialize_config`, `initialize_profile`, `issue_credential`
+- [x] Phase 1 — host verification: `cargo check`, `cargo clippy -- -D warnings`, `cargo fmt`, **28 `cargo test` assertions** (discriminators, account byte layout, `INIT_SPACE`, sighashes, and 7 PDA vectors shared with TypeScript)
 - [ ] Phase 1 — `anchor build` + `anchor test` — **BLOCKED** (host toolchain, see above)
-- [x] Phase 2 — Next.js App Router + Tailwind v4 scaffold
-- [x] Phase 2 — Typed challenge catalogue with weighted rubrics
-- [x] Phase 2 — Canonical submission hashing and SHA-256 evidence hash
-- [x] Phase 2 — Rubric-based AI evaluation service
-- [ ] Phase 2 — HMAC attestation plus `/api/evaluate` and `/api/issue`
-- [x] Phase 2 — Solana client layer (PDAs, codecs, transaction builder)
-- [ ] Phase 2 — Wallet Adapter and Phantom connect
-- [ ] Phase 3 — Landing page separating AI Evaluation from Onchain Verification
-- [ ] Phase 3 — Challenge list and challenge workspace
-- [ ] Phase 3 — Evaluation result screen
-- [ ] Phase 3 — Transaction status component with mapped errors
-- [ ] Phase 3 — Dashboard
-- [ ] Phase 3 — Public `/verify/[credentialId]` page
-- [ ] Phase 4 — Motion transitions and lazy-loaded 3D hero
-- [ ] Phase 5 — `typecheck`, `lint`, `build` and program tests green
-- [ ] Phase 6 — Devnet deploy and end-to-end demo transaction
+- [x] Phase 2 — Next.js App Router + Tailwind v4 + shadcn/ui scaffold
+- [x] Phase 2 — Typed challenge catalogue with weighted rubrics (7 tests)
+- [x] Phase 2 — Canonical submission hashing and SHA-256 evidence hash (8 tests)
+- [x] Phase 2 — Rubric-based AI evaluation service (110 tests, network stubbed)
+- [x] Phase 2 — HMAC attestation with tamper / expiry / threshold rejection (26 tests)
+- [x] Phase 2 — Solana client layer: PDAs, codecs, queries, transaction builder (109 tests)
+- [x] Phase 2 — `POST /api/evaluate` — verified over HTTP, including the labelled dev fallback
+- [ ] Phase 2 — `POST /api/issue` end to end — auth verified (400 for malformed, wrong-secret and invalid-wallet tokens); **BLOCKED** before a cluster because no program is deployed
+- [ ] Phase 2 — Wallet Adapter connect with Phantom — **NOT RUN** (needs a browser with a wallet installed)
+- [x] Phase 3 — Landing page separating AI Evaluation from Onchain Verification
+- [x] Phase 3 — Challenge list and challenge workspace
+- [x] Phase 3 — Public `/verify/[credentialId]` page, reading live Devnet RPC with invalid / foreign-owner / not-found states
+- [x] Phase 3 — Error mapping for every case in `docs/rules.md` → ERROR_UX (47 tests)
+- [ ] Phase 3 — Evaluation result screen and transaction status component — built and type-checked, **not visually verified** in a browser
+- [ ] Phase 3 — Dashboard — renders (HTTP 200); the populated state is unverifiable until a credential exists onchain
+- [ ] Phase 4 — Motion transitions and lazy-loaded 3D hero — built with reduced-motion and no-WebGL fallbacks, **not visually verified**
+- [x] Phase 5 — `pnpm typecheck`, `pnpm lint`, `pnpm test` (340 tests), `pnpm build` (14 routes) — all PASS
+- [x] Phase 5 — secret scan of tracked files — clean
+- [ ] Phase 6 — Devnet deploy and end-to-end demo transaction — **BLOCKED**
 
 ---
 
@@ -172,7 +178,7 @@ Built with **Anchor (Rust)**.
 |---|---|
 | **Program** | `proof_of_skill` |
 | **Network** | Solana Devnet |
-| **Program ID** | `<PROGRAM_ID>` ← fill in after deployment |
+| **Program ID** | `5BLtjKxvax6xxVp6xF3wgmaV3NbmXwbdGsM1sytsqji3` — declared from a generated keypair; **not yet deployed**, so no account exists at this address on Devnet |
 
 ### Accounts
 
@@ -252,6 +258,9 @@ Built with **Anchor (Rust)**.
 
 ## 🏁 Demo Path (for Judges)
 
+> [!WARNING]
+> Steps 6–8 need a deployed program. On this machine `anchor build` is blocked, so the path is verified only up to the point where a wallet would sign: submission, evaluation, attestation minting and the server-side transaction build are covered by tests and an HTTP smoke run. The signing step, the confirmation, and the credentialed dashboard state have **not** been executed.
+
 1. Open the app and read the landing page.
 2. Go to <kbd>/challenges</kbd> and open **Solana PDA Fundamentals**.
 3. Write an explanation, add a code snippet, and optionally a GitHub URL, then submit.
@@ -317,24 +326,69 @@ pnpm dev
 
 <br />
 
+Verified on this machine (host target — no `.so`, no validator):
+
+```bash
+cargo check -p proof_of_skill
+cargo clippy -p proof_of_skill --all-targets -- -D warnings
+cargo test -p proof_of_skill        # 28 assertions: discriminators, byte layout, PDA parity
+```
+
+The onchain suite has not been run. `anchor build` and `anchor test` fail on Windows with anchor-cli 0.29:
+
+```bash
+anchor build   # error: no such command: `build-bpf`
+anchor test    # blocked by the same step
+```
+
+Run these on Linux (or a Windows session with Developer Mode enabled so platform-tools can symlink), then the generated IDL must be copied into `lib/solana/idl/`:
+
 ```bash
 anchor build
 anchor test
+anchor deploy --provider.cluster devnet
 ```
 
 </details>
 
 <details>
-<summary><b>🌐 Deploy to Devnet</b></summary>
+<summary><b>🌐 Deploy to Devnet — NOT DONE</b></summary>
 
 <br />
+
+Nothing in this repository has been deployed, and no transaction signature exists. Measured state of this machine:
+
+| Check | Result |
+|---|---|
+| `solana config get` | RPC is `https://api.mainnet-beta.solana.com`, not devnet |
+| `solana balance --url devnet` | `0 SOL` |
+| `solana program show 5BLt…qji3 --url devnet` | `Error: Unable to find the account` |
+
+To deploy once `anchor build` works, fund the keypair from <https://faucet.solana.com>, point the CLI at devnet, deploy, then register the issuer — `scripts/init-config.cjs` refuses to run until a built IDL exists:
 
 ```bash
 solana config set --url devnet
 anchor deploy --provider.cluster devnet
+node scripts/init-config.cjs
 ```
 
-Then initialize the `Config` account with your issuer public key and set `NEXT_PUBLIC_PROGRAM_ID`.
+</details>
+
+<details>
+<summary><b>🧪 Run the app and its checks</b></summary>
+
+<br />
+
+All of these pass in this session:
+
+```bash
+pnpm install
+pnpm test          # 340 unit tests, network and RPC stubbed
+pnpm typecheck
+pnpm lint
+pnpm build         # 14 routes
+pnpm dev
+```
 
 </details>
 
@@ -359,12 +413,17 @@ Then initialize the `Config` account with your issuer public key and set `NEXT_P
 
 ## ⚠️ Limitations
 
+- **Nothing is deployed.** No `.so` could be produced on this host, so there is no onchain program, no credential, and no real signature to click. See [Build Status](#-build-status).
+- **`anchor test` never ran.** Every `require!` and account constraint in the program is enforced by code that has been compiled and reviewed but not exercised against a validator. The host tests prove the wire format and derivation math, not rejection behaviour.
+- **Client interactives are not browser-verified.** The evaluation result screen, the wallet connect flow and the transaction status states are type-checked and unit-tested, but no browser with a wallet was driven.
 - **AI evaluation is not cryptographic proof of skill.** It is a rubric-based assessment and can be wrong.
 - **The issuer is centralized and trusted** in the MVP. The program trusts one registered issuer key.
 - Attestation tokens are not bound to a wallet at mint time; per-wallet, per-challenge uniqueness is enforced by the Credential PDA.
+- Rate limiting is an in-process fixed window — it resets on restart and is per instance, not distributed.
 - The challenge catalogue is small and hardcoded (five challenges).
 - Devnet only.
 - The repository URL is stored and hashed but is not fetched or analyzed.
+- `EvaluationResult` has no `attestation` field by design; the route handler attaches the token, so the evaluator module cannot mint its own authorisation.
 
 ---
 

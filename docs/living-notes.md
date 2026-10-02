@@ -62,6 +62,16 @@ Resolved live on 2026-10-02 (Phase 0). `stack.md` says never pin from docs — t
 - 2026-10-02 [frontend] pnpm 12 blocks install scripts by default. `bufferutil`/`utf-8-validate` (optional `ws` accelerators) are declared `false` in `pnpm-workspace.yaml`; the pure-JS fallback is used. Do not "fix" this by approving builds.
 - 2026-10-02 [frontend] `pnpm peers check` still reports `openai@7` wanting `ws@^8` while `@solana/web3.js` pins `ws@7`. Not resolved: our use of the openai SDK is HTTP chat-completions only (`ws` is the realtime path), so this is cosmetic. Revisit if the SDK is ever used for realtime.
 - 2026-10-02 [frontend] vitest config is `vitest.config.mts` — a `.ts` config triggers Vite's "ESM syntax in a file loaded as CommonJS" warning because the repo has no `"type": "module"`.
+- 2026-10-02 [frontend] shadcn 4.21.1 with the `base-nova` preset uses **base-ui, not Radix**: `Button` has no `asChild`. Compose links with `render={<Link href="..." />}` (verified in `@base-ui/react/internals/types.d.ts`: `render?: ReactElement | ComponentRenderFn`). `Alert` only has `default` and `destructive` variants — there is no `warning`.
+- 2026-10-02 [frontend] `pnpm dlx shadcn init` added the **shadcn CLI to runtime `dependencies`**; demoted to devDependencies. It also wrote `lib/utils.ts` re-exporting `cn` from the published `cn` package — checked before trusting it: maintained by shadcn (`github.com/shadcn-ui/cn`, `m@shadcn.com`), not an unrelated look-alike. Still outside `stack.md`'s allowed list, so it needs sign-off.
+- 2026-10-02 [frontend] eslint-config-next 16 enforces `react-hooks/set-state-in-effect`. Two components tripped it; both now use `useSyncExternalStore` (the WebGL probe caches its boolean, the sessionStorage restore caches parsed JSON by raw string so `getSnapshot` stays referentially stable). Do not "fix" these by moving the setState into a `useEffect` body again.
+- 2026-10-02 [frontend] `LayoutProps<"/">` needs Next's generated route types; plain `{ children: React.ReactNode }` avoids depending on them.
+- 2026-10-02 [decision] `EvaluationResult` deliberately has **no** `attestation` field, so the evaluator module cannot mint its own authorisation. `/api/evaluate` attaches the token afterwards. The dev fallback scores 0 with `passed: false`, which is what makes it unattestable rather than a policy check elsewhere.
+- 2026-10-02 [env] `NEXT_PUBLIC_SOLANA_RPC_URL` is an **override**, not a required key: nothing read `env.rpcUrl`, yet `/api/evaluate` returned 500 when it was unset — failing an endpoint that never touches the RPC. `lib/solana/connection.ts` already resolves a per-cluster default. A present-but-malformed url is still rejected.
+- 2026-10-02 [anchor] Rust-side correction to my own brief: the trait is `Discriminator::DISCRIMINATOR` (not `::ID`) and `INIT_SPACE` comes from `Space`; neither `Discriminator` nor `InstructionData` is in the 0.29 prelude.
+- 2026-10-02 [deploy] Devnet **RPC reads work from this machine** — `/verify/[credentialId]` fetched live accounts successfully and rejected an address owned by another program. Only the *build and deploy* path is blocked; the read path is verified against real Devnet.
+- 2026-10-02 [deploy] Recorded: `solana config get` targets **mainnet-beta** (global CLI config left untouched), deployer `E7Q8…zL1t` holds **0 SOL on devnet**, and `solana program show 5BLt… --url devnet` returns `Unable to find the account`. No airdrop attempted while `anchor build` is blocked.
+- 2026-10-02 [blocker] Running `node scripts/init-config.cjs` to confirm its missing-IDL guard was **denied by the sandbox**, so that behaviour is known by code inspection only — it is NOT RUN and must not be reported as executed.
 
 ## Blockers
 
@@ -79,6 +89,10 @@ Resolved live on 2026-10-02 (Phase 0). `stack.md` says never pin from docs — t
 - 2026-10-02 `solana-keygen new --no-bip39-passphrase --silent --outfile <path>` → works; used for the program and issuer keypairs.
 - 2026-10-02 `pnpm install`, `pnpm add`, `pnpm test` → PASS (vitest 5.0.3).
 - All of the above must be invoked as `C:\Users\Dell\.qwen\scratch\posenv.cmd <cmd>` on this host.
+- 2026-10-02 `cargo test -p proof_of_skill` → PASS (28 tests). The `#[program]` entrypoint does **not** block host tests; no feature flag needed.
+- 2026-10-02 `pnpm typecheck` / `pnpm lint` / `pnpm build` / `pnpm test` → all PASS (340 tests, 14 routes).
+- 2026-10-02 `node .qwen/tmp/smoke.mjs` against `pnpm dev` → 18/18 HTTP checks pass: every page renders, `/api/evaluate` returns the labelled dev fallback with no attestation, and `/api/issue` rejects malformed, wrong-secret and forged attestations with 400.
+- 2026-10-02 secret scan of tracked files (`.qwen/tmp/secret-scan.mjs`, reports file:line only) → 7 matches, all negative-test fixtures asserting non-leakage; no keypair, `.env*` or `target/` path is tracked.
 
 ## Session Log
 
