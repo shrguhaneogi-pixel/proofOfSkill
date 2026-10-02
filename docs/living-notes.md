@@ -94,7 +94,7 @@ Resolved live on 2026-10-02 (Phase 0). `stack.md` says never pin from docs — t
 - 2026-10-02 `pnpm install`, `pnpm add`, `pnpm test` → PASS (vitest 5.0.3).
 - All of the above must be invoked as `C:\Users\Dell\.qwen\scratch\posenv.cmd <cmd>` on this host.
 - 2026-10-02 `cargo test -p proof_of_skill` → PASS (28 tests). The `#[program]` entrypoint does **not** block host tests; no feature flag needed.
-- 2026-10-02 `pnpm typecheck` / `pnpm lint` / `pnpm build` / `pnpm test` → all PASS (340 tests, 14 routes).
+- 2026-10-02 `pnpm typecheck` / `pnpm lint` / `pnpm build` / `pnpm test` → all PASS (344 tests, 14 routes).
 - 2026-10-02 `node .qwen/tmp/smoke.mjs` against `pnpm dev` → 18/18 HTTP checks pass: every page renders, `/api/evaluate` returns the labelled dev fallback with no attestation, and `/api/issue` rejects malformed, wrong-secret and forged attestations with 400.
 - 2026-10-02 secret scan of tracked files (`.qwen/tmp/secret-scan.mjs`, reports file:line only) → 7 matches, all negative-test fixtures asserting non-leakage; no keypair, `.env*` or `target/` path is tracked.
 

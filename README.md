@@ -33,7 +33,7 @@
 > [!IMPORTANT]
 > The sections below describe the intended architecture. This section tracks what is **actually built and verified right now**, and is updated as work lands.
 
-**Verified on this machine** — the program compiles clean for the host target (`cargo check`), passes `cargo clippy -- -D warnings` and `cargo fmt --check`, and **28 `cargo test` assertions pass**, pinning account discriminators, serialized byte offsets, `INIT_SPACE` totals (73 / 57 / 115), instruction sighashes and all seven PDA derivations against vectors computed independently with `@solana/web3.js`. On the app side: **340 vitest tests pass**, `pnpm typecheck`, `pnpm lint` and `pnpm build` (14 routes) are clean, and an **18-check HTTP smoke run against `pnpm dev`** confirms every page renders and that `/api/evaluate` and `/api/issue` reject forged, tampered and wrong-secret attestations. The `/verify` page reads **real Devnet RPC** successfully.
+**Verified on this machine** — the program compiles clean for the host target (`cargo check`), passes `cargo clippy -- -D warnings` and `cargo fmt --check`, and **28 `cargo test` assertions pass**, pinning account discriminators, serialized byte offsets, `INIT_SPACE` totals (73 / 57 / 115), instruction sighashes and all seven PDA derivations against vectors computed independently with `@solana/web3.js`. On the app side: **344 vitest tests pass**, `pnpm typecheck`, `pnpm lint` and `pnpm build` (14 routes) are clean, and an **18-check HTTP smoke run against `pnpm dev`** confirms every page renders and that `/api/evaluate` and `/api/issue` reject forged, tampered and wrong-secret attestations. The `/verify` page reads **real Devnet RPC** successfully.
 
 **Blocked on this host** — `anchor build` / `anchor test` cannot run: anchor-cli 0.29 invokes the legacy `cargo-build-bpf`, and `cargo build-sbf` needs privileges to symlink platform-tools. So there is no `.so`, no IDL, no Devnet deployment and therefore **no real transaction signature** yet. Details: [docs/living-notes.md](./docs/living-notes.md) → Blockers.
 
@@ -61,7 +61,7 @@ Counts below are measured from this session's runs, not estimates.
 - [ ] Phase 3 — Evaluation result screen and transaction status component — built and type-checked, **not visually verified** in a browser
 - [ ] Phase 3 — Dashboard — renders (HTTP 200); the populated state is unverifiable until a credential exists onchain
 - [ ] Phase 4 — Motion transitions and lazy-loaded 3D hero — built with reduced-motion and no-WebGL fallbacks, **not visually verified**
-- [x] Phase 5 — `pnpm typecheck`, `pnpm lint`, `pnpm test` (340 tests), `pnpm build` (14 routes) — all PASS
+- [x] Phase 5 — `pnpm typecheck`, `pnpm lint`, `pnpm test` (344 tests), `pnpm build` (14 routes) — all PASS
 - [x] Phase 5 — secret scan of tracked files — clean
 - [ ] Phase 6 — Devnet deploy and end-to-end demo transaction — **BLOCKED**
 
@@ -341,7 +341,7 @@ anchor build   # error: no such command: `build-bpf`
 anchor test    # blocked by the same step
 ```
 
-Run these on Linux (or a Windows session with Developer Mode enabled so platform-tools can symlink), then the generated IDL must be copied into `lib/solana/idl/`:
+Run these on Linux (or a Windows session with Developer Mode enabled so platform-tools can symlink). Note that this app's client does **not** read an IDL: `lib/solana/` encodes instructions and decodes accounts at the byte level, pinned to the same discriminators, sizes and PDAs the Rust tests assert. Copying `target/idl/proof_of_skill.json` into `lib/solana/idl/` is only needed if you later switch the client to `new Program(idl, provider)`.
 
 ```bash
 anchor build
@@ -383,7 +383,7 @@ All of these pass in this session:
 
 ```bash
 pnpm install
-pnpm test          # 340 unit tests, network and RPC stubbed
+pnpm test          # 344 unit tests, network and RPC stubbed
 pnpm typecheck
 pnpm lint
 pnpm build         # 14 routes
