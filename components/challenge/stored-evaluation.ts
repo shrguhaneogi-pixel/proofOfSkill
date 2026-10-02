@@ -5,11 +5,12 @@ import { useSyncExternalStore } from "react";
 import type { EvaluationResult } from "@/lib/evaluation/types";
 
 /**
- * The evaluation plus the HMAC attestation the route mints for an issuable pass.
- * `attestation` is deliberately absent from `EvaluationResult` itself, so the
- * evaluator module cannot mint its own authorisation.
+ * What the workspace persists: the result of `/api/evaluate`, which may carry the
+ * HMAC attestation that unlocks `/api/issue`. `attestation` is part of the
+ * contract type but is assigned only by the route handler — no code in
+ * `lib/evaluation` sets it, so the evaluator cannot authorise its own credential.
  */
-export type StoredEvaluation = EvaluationResult & { attestation?: string };
+export type StoredEvaluation = EvaluationResult;
 
 const STORAGE_PREFIX = "proofofskill:evaluation:";
 

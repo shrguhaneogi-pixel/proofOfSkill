@@ -59,11 +59,10 @@ export const ModelEvaluationSchema = z.object({
 export type ModelEvaluation = z.infer<typeof ModelEvaluationSchema>;
 
 /**
- * Compatibility re-export: `components/evaluation/` imports the result type from
- * this module. It is defined in `types.ts` (alongside the transport interface),
- * so it is named here explicitly rather than spread through a barrel.
+ * The result types live in `types.ts` alongside the transport interface. They are
+ * not re-exported from here: one import path per type keeps a second alias from
+ * drifting, and every consumer already reads them from `types.ts`.
  */
-export type { CriterionStatus, EvaluatedCriterion, EvaluationResult } from "./types";
 
 export type ValidationError = {
   ok: false;

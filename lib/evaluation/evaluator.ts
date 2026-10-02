@@ -10,8 +10,9 @@
  *   (see `openai-client.ts`) or the result of `evaluationWithoutApiKey(...)`
  *   (see `dev-fallback.ts`).
  * - It returns a typed outcome and never throws for a validation failure.
- * - It does **not** mint the attestation token: `lib/attestation` owns that, and
- *   `EvaluationResult` deliberately has no `attestation` field.
+ * - It does **not** mint the attestation token: `lib/attestation` owns that. The
+ *   field exists on `EvaluationResult` because the spec and the UI read it, but no
+ *   code path here assigns it.
  */
 
 import type { Challenge } from "../challenges/types";

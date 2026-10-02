@@ -53,9 +53,11 @@ export type EvaluatedCriterion = {
 };
 
 /**
- * Shape returned to the client. `attestation` is owned by the route handler and
- * `lib/attestation`, so it is deliberately absent here: this module must not be
- * able to mint its own authorisation.
+ * Shape returned to the client. `attestation` is declared here because
+ * `docs/api-schema.md` puts it on this type and the UI reads it, but **nothing in
+ * `lib/evaluation` ever sets it** — only the route handler mints it, through
+ * `lib/attestation` and behind `canMintAttestation()`. The evaluator can therefore
+ * score a pass without ever being able to authorise a credential.
  */
 export type EvaluationResult = {
   challengeId: ChallengeId;
