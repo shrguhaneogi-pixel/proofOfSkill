@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./docs/assets/logo.svg" alt="ProofOfSkill logo" style="width: 100%; max-width: 100%; height: auto;" />
+<img src="./docs/assets/logo.svg" alt="ProofOfSkill logo" style="width: 100%; max-width: 70%; height: auto;" />
 
 **Demonstrate it. Get evaluated. Verify it onchain.**
 
@@ -25,6 +25,39 @@
 <a href="#-quick-start"><kbd>&nbsp;⚡ Quick Start&nbsp;</kbd></a>
 
 </div>
+
+---
+
+## 🚦 Build Status
+
+> [!IMPORTANT]
+> The sections below describe the intended architecture. This section tracks what is **actually built and verified right now**, and is updated as work lands.
+
+**Verified on this machine** — the program compiles clean for the host target (`cargo check`), passes `cargo clippy -- -D warnings` and `cargo fmt --check`, and **28 `cargo test` assertions pass**, pinning account discriminators, serialized byte offsets, `INIT_SPACE` totals (73 / 57 / 115), instruction sighashes and all seven PDA derivations against vectors computed independently with `@solana/web3.js`. `vitest` unit tests are green for the challenge catalogue and evidence hashing.
+
+**Blocked on this host** — `anchor build` / `anchor test` cannot run: anchor-cli 0.29 invokes the legacy `cargo-build-bpf`, and `cargo build-sbf` needs privileges to symlink platform-tools. So there is no `.so`, no IDL, no Devnet deployment and therefore **no real transaction signature** yet. Details: [docs/living-notes.md](./docs/living-notes.md) → Blockers.
+
+### MVP checklist
+
+- [x] Phase 0 — repository audit, `.gitignore`, toolchain and package versions resolved
+- [x] Phase 1 — Anchor program source: `initialize_config`, `initialize_profile`, `issue_credential` (verified by host `cargo check` + `clippy`)
+- [ ] Phase 1 — `anchor build` + `anchor test` — **BLOCKED** (host toolchain, see above)
+- [x] Phase 2 — Next.js App Router + Tailwind v4 scaffold
+- [x] Phase 2 — Typed challenge catalogue with weighted rubrics
+- [x] Phase 2 — Canonical submission hashing and SHA-256 evidence hash
+- [x] Phase 2 — Rubric-based AI evaluation service
+- [ ] Phase 2 — HMAC attestation plus `/api/evaluate` and `/api/issue`
+- [x] Phase 2 — Solana client layer (PDAs, codecs, transaction builder)
+- [ ] Phase 2 — Wallet Adapter and Phantom connect
+- [ ] Phase 3 — Landing page separating AI Evaluation from Onchain Verification
+- [ ] Phase 3 — Challenge list and challenge workspace
+- [ ] Phase 3 — Evaluation result screen
+- [ ] Phase 3 — Transaction status component with mapped errors
+- [ ] Phase 3 — Dashboard
+- [ ] Phase 3 — Public `/verify/[credentialId]` page
+- [ ] Phase 4 — Motion transitions and lazy-loaded 3D hero
+- [ ] Phase 5 — `typecheck`, `lint`, `build` and program tests green
+- [ ] Phase 6 — Devnet deploy and end-to-end demo transaction
 
 ---
 
