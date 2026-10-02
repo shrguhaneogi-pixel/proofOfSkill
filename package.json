@@ -14,6 +14,7 @@
     "test:anchor": "anchor test"
   },
   "dependencies": {
+    "@base-ui/react": "^1.8.0",
     "@coral-xyz/anchor": "0.29.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
@@ -24,6 +25,7 @@
     "bs58": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cn": "^0.4.0",
     "lucide-react": "^1.49.0",
     "motion": "^13.4.6",
     "next": "16.3.8",
@@ -49,6 +51,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "mocha": "^9.2.2",
+    "shadcn": "^4.21.1",
     "tailwindcss": "^4",
     "ts-mocha": "^11.1.0",
     "typescript": "^5",

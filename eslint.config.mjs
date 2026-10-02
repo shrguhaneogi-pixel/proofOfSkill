@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated Rust/Anchor output, mirrored into lib/solana/idl by `anchor build`.
+    "target/**",
+    // Scratch space for agents and one-off scripts; not app source.
+    ".qwen/**",
+    // Intentional CommonJS: plain `node` scripts that must run without a bundler
+    // or ts-node, so `require()` is the correct form there, not a lapse.
+    "scripts/**/*.cjs",
   ]),
 ]);
 

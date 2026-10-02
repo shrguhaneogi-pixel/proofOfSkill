@@ -30,6 +30,7 @@ id.json
 .turbo/
 .eslintcache
 *.tsbuildinfo
+next-env.d.ts
 coverage/
 
 # editor / os / agent scratch
