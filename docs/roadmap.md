@@ -49,7 +49,7 @@ Rules: work top to bottom. Tick `- [x]` only after the **Verify** command passes
 ## Phase 5 — Hardening
 - [x] `pnpm typecheck` PASS
 - [x] `pnpm lint` PASS
-- [x] `pnpm test` PASS — 340 tests, 25 files
+- [x] `pnpm test` PASS — 344 tests, 26 files
 - [x] `pnpm build` PASS — 14 routes
 - [ ] `anchor build` — **BLOCKED** (see living-notes → Blockers)
 - [ ] `anchor test` — **BLOCKED** (depends on the above)
