@@ -37,7 +37,7 @@
 - No secrets in git: API keys, keypairs, seed phrases, `.env*` (except `.env.example` with empty values). `.keys/` and `target/deploy/*-keypair.json` stay in `.gitignore`.
 - No `NEXT_PUBLIC_` prefix on any secret.
 - No trusting the client for `passed`, `score`, or issuer identity. Authorization is enforced by the Anchor program and the server attestation.
-- No arbitrary execution of user-submitted code. No fetching user-supplied URLs server-side (the repo URL is stored and hashed, never fetched).
+- No arbitrary execution of user-submitted code. No fetching arbitrary user-supplied URLs server-side: the **only** permitted outbound read is a public GitHub repository matching `REPO_URL_PATTERN`, via the GitHub API with hard size and count caps (`lib/evaluation/github.ts`). That replaced the earlier "stored and hashed, never fetched" rule, so the allow-list is a security boundary — no other host, no `http:`, no deep tree links, no `..` segments, and secret-shaped paths (`.env*`, `*.pem`, `id_rsa`, `secrets/`) are never read. Anything unfetchable degrades to grading the submitted text only.
 - No `init_if_needed`, no `unsafe`, no `UncheckedAccount` without a `/// CHECK:` comment explaining why it is safe, no unchecked arithmetic in the program.
 - No deprecated or removed APIs (see `docs/stack.md` → API_PITFALLS). No old tutorials as authority.
 - No new top-level features outside `docs/roadmap.md` before the demo path passes.

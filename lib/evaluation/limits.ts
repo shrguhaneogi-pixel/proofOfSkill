@@ -15,10 +15,20 @@ export const EXPLANATION_RANGE = { min: 100, max: 4000 } as const;
 export const CODE_RANGE = { min: 1, max: 8000 } as const;
 
 /**
- * An optional public GitHub repository, `https://github.com/owner/repo`, with an
- * optional trailing slash. Nothing else is accepted: no other host, no `http:`,
- * no deep links into a tree. The URL is stored and hashed, never fetched
- * server-side (docs/rules.md → FORBIDDEN_PRACTICES).
+ * A public GitHub repository, `https://github.com/owner/repo`, with an optional trailing
+ * slash. Nothing else is accepted: no other host, no `http:`, no deep links into a tree.
+ *
+ * This URL *is* now read server-side — `lib/evaluation/github.ts` walks the repository
+ * tree through the GitHub API and feeds bounded file excerpts to the evaluator — so the
+ * shape enforced here is a security boundary, not just a validation nicety. Keep the two
+ * caveats together:
+ *
+ * - `[\w.-]+` matches dot-segments, so `..` passes this pattern. `github.ts` re-parses and
+ *   rejects those before any request; do not treat this regex as path-safe on its own.
+ * - Fetching is capped (per-file size, file count, total bytes, blob reads) and the
+ *   evidence hash folds in a digest of what was read, so grading stays reproducible.
+ *   See `docs/rules.md` → FORBIDDEN_PRACTICES for the "no arbitrary user-supplied URLs"
+ *   rule this operates inside.
  */
 export const REPO_URL_PATTERN = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
 
