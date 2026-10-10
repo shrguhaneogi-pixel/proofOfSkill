@@ -77,10 +77,12 @@ Seed for challenge uses the single byte `&[challenge_id]`. Store and reuse the c
 
 ### update_config(issuer: Pubkey)
 - Signer: `admin` (mut, payer — `mut` because the fee payer must be writable).
-- Accounts: `config` (mut, seeds=[CONFIG_SEED], bump=config.bump, `has_one = admin @ ProofError::UnauthorizedAdmin`).
+- Accounts: `config` (mut, seeds=[CONFIG_SEED], bump=config.bump, `has_one = admin @ ProofError::UnauthorizedAdmin`), `program` (constrained so `programdata_address()? == Some(program_data.key())`), `program_data` (read-only, resolves the *current* upgrade authority).
 - Handler check: `issuer != Pubkey::default()` → `UnusableIssuer`. The all-zero key is a valid `Pubkey` that can never sign, so accepting it would brick issuance until a redeploy.
+- Handler checks: the all-zero issuer above, **and** `program_data.upgrade_authority_address == Some(admin.key())` → `UnauthorizedAdmin`.
 - Effect: replace `config.issuer`; `emit!(ConfigUpdated { admin, previous_issuer, new_issuer })`.
-- Guarded by `config.admin` rather than the upgrade authority: a leaked issuer key can be rotated after the authority has been relinquished, and the admin can rotate the issuer without being able to replace the program.
+- **Why both bindings:** `config.admin` is frozen at `initialize_config` and never rewritten, so `has_one = admin` alone would let a key that was later demoted (authority transferred or renounced) keep rotating the issuer indefinitely, while the authority actually controlling the program had no path in. Requiring both makes rotation track control rather than a snapshot of it. Consequence, deliberately accepted: **renouncing the upgrade authority permanently freezes issuer rotation** — rotate to the long-lived issuer before doing it.
+- `initialize_config` enforces the same all-zero-issuer guard, so a Config can never be created with an issuer that cannot sign.
 - sighash `1d9efcbf0a53db63`, pinned by `update_config_instruction_discriminator` and asserted distinct from `initialize_config` in the Rust test module; the TS mirror is `INSTRUCTION_DISCRIMINATOR_HEX.updateConfig`.
 - Operator path: `node scripts/rotate-issuer.cjs --new-issuer <base58>`.
 </INSTRUCTIONS>
