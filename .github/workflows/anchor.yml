@@ -185,9 +185,20 @@ jobs:
 
       # `.so` and IDL only. `target/deploy/proof_of_skill-keypair.json` is a private key that
       # `anchor build` also writes there, and `.gitignore` keeps it out of git — it must not
-      # be turned into a downloadable artifact either. Uploaded only on success, so a failed
-      # build cannot produce a plausible-looking artifact.
+      # be turned into a downloadable artifact either.
+      #
+      # `if: always()` from here down, deliberately. A validator-test failure says something
+      # about the program's behaviour; it says nothing about whether the SBF compile produced
+      # a loadable binary, and it must not hide the four JS results. Run #4 proved the cost:
+      # the repo's first green `anchor build` ended with the upload step and every `App gate`
+      # step skipped, so the `.so` nobody could download was the only artifact of that run.
+      # The job stays red — this changes which steps report, not the verdict.
+      #
+      # CAVEAT that `if: always()` creates, stated so the artifact is not over-trusted: on a
+      # failing run this is the `.so` that was BUILT, not the one that was TESTED. Deploy it
+      # deliberately, never silently.
       - name: Upload program artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: program-${{ github.sha }}
@@ -197,14 +208,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # One CI run should report every gate it owns. These four are independent of the
+      # validator test, and all four already pass on the maintainer's host — running them
+      # here is about catching a Linux-only difference (path casing, fs.watch, native
+      # modules), which a skipped step can never reveal.
       - name: App gate — typecheck
+        if: always()
         run: pnpm typecheck
 
       - name: App gate — lint
+        if: always()
         run: pnpm lint
 
       - name: App gate — unit tests
+        if: always()
         run: pnpm test
 
       - name: App gate — build
+        if: always()
         run: pnpm build
