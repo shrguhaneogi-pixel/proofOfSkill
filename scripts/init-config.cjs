@@ -1,79 +1,115 @@
 /**
  * Registers the server-held issuer key in the onchain Config account.
  *
- * Run after the program is deployed and the deployer is the program's upgrade
- * authority:
- *   node scripts/init-config.cjs            # uses RPC from env or localnet
- *   ANCHOR_PROVIDER_URL=http://127.0.0.1:8899 node scripts/init-config.cjs
+ * Run after the program is deployed, signed by the deployer (it must be the program's
+ * upgrade authority, which `initialize_config` checks against ProgramData):
  *
- * Plain CommonJS on purpose: the approved dependency list in docs/stack.md has
- * no ts-node, and this must stay runnable with just `node`.
+ *   ANCHOR_PROVIDER_URL=https://api.devnet.solana.com node scripts/init-config.cjs
+ *   ANCHOR_PROVIDER_URL=https://api.devnet.solana.com node scripts/init-config.cjs --admin-key .keys/deployer.json
+ *
+ * Plain CommonJS on purpose: docs/stack.md's approved dependency list has no ts-node, and
+ * this must stay runnable with just `node`.
+ *
+ * IDL-free: `cargo build-sbf` produces bytecode but no `target/idl/proof_of_skill.json`,
+ * and this app's client never reads an IDL (see `lib/solana/`), so requiring one here would
+ * tie first-time setup to a build path that does not exist on every host.
  */
-const fs = require("node:fs");
-const path = require("node:path");
-const anchor = require("@coral-xyz/anchor");
-const { Keypair, PublicKey } = require("@solana/web3.js");
+const { PublicKey } = require("@solana/web3.js");
+const {
+  PROGRAM_ID,
+  configPda,
+  connectionFromEnv,
+  decodeConfig,
+  initializeConfigInstruction,
+  programDataAddress,
+  readKeypair,
+  readIssuerPubkey,
+  sendAndConfirm,
+} = require("./proof-of-skill.cjs");
 
-const PROGRAM_ID = new PublicKey(
-  process.env.NEXT_PUBLIC_PROGRAM_ID || "5BLtjKxvax6xxVp6xF3wgmaV3NbmXwbdGsM1sytsqji3",
-);
-
-function readIdl() {
-  const idlPath = path.join(__dirname, "..", "target", "idl", "proof_of_skill.json");
-  if (!fs.existsSync(idlPath)) {
-    throw new Error(
-      `no IDL at ${idlPath}. Build the program first (anchor build) — this script cannot run ` +
-        "while the SBF build is blocked on this host.",
-    );
-  }
-  return JSON.parse(fs.readFileSync(idlPath, "utf8"));
+function argValue(name) {
+  const index = process.argv.indexOf(name);
+  return index !== -1 && index + 1 < process.argv.length ? process.argv[index + 1] : undefined;
 }
 
-function readIssuerPubkey() {
-  const keyPath = process.env.ISSUER_KEY_FILE
-    ? path.resolve(process.env.ISSUER_KEY_FILE)
-    : path.join(__dirname, "..", ".keys", "issuer.json");
-  if (!fs.existsSync(keyPath)) {
-    throw new Error(`no issuer keypair at ${keyPath}. Generate one with solana-keygen new -o ${keyPath}`);
+/**
+ * `bpf_loader_upgradeable` ProgramData layout: `4` state discriminant, `8` slot, then a
+ * `COption<Pubkey>` upgrade authority (4 byte flag + 32 byte key). Returns null when the
+ * authority has been relinquished, which is the state that makes `initialize_config`
+ * permanently unreachable.
+ */
+function readUpgradeAuthority(data) {
+  if (data.length < 48) {
+    return null;
   }
-  const bytes = JSON.parse(fs.readFileSync(keyPath, "utf8"));
-  return Keypair.fromSecretKey(Uint8Array.from(bytes)).publicKey;
+  return data.readUInt32LE(12) === 1 ? new PublicKey(data.subarray(16, 48)) : null;
 }
 
 async function main() {
-  const provider = anchor.AnchorProvider.local(
-    process.env.ANCHOR_PROVIDER_URL || "http://127.0.0.1:8899",
-    { commitment: "confirmed", skipPreflight: false },
-  );
-  anchor.setProvider(provider);
+  const issuer = readIssuerPubkey(argValue("--issuer") || process.env.ISSUER_PUBKEY);
+  const admin = readKeypair(argValue("--admin-key") || process.env.ADMIN_KEY_FILE, "admin");
+  const connection = connectionFromEnv();
+  const pda = configPda();
 
-  const program = new anchor.Program(readIdl(), provider);
-  const issuer = readIssuerPubkey();
-  const [configPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("config")],
-    PROGRAM_ID,
-  );
-
-  const existing = await program.account.config.fetchNullable(configPda);
-  if (existing) {
-    if (existing.issuer.equals(issuer)) {
+  const existing = await connection.getAccountInfo(pda);
+  if (existing !== null) {
+    const config = decodeConfig(existing.data);
+    if (config.issuer.equals(issuer)) {
       console.log(`Config already initialized with the expected issuer: ${issuer.toBase58()}`);
       return;
     }
     throw new Error(
-      `Config already exists with a different issuer (${existing.issuer.toBase58()}). ` +
-        "Re-deploy the program or rotate the issuer deliberately.",
+      `Config already exists at ${pda.toBase58()} with issuer ${config.issuer.toBase58()}, ` +
+        `not ${issuer.toBase58()}. Rotate it deliberately with: ` +
+        "node scripts/rotate-issuer.cjs --new-issuer <pubkey>",
+    );
+  }
+
+  // Checked before signing so a wrong-key mistake costs no fee. The program makes the same
+  // comparison, so this only turns a revert into a readable message.
+  const programData = programDataAddress();
+  const account = await connection.getAccountInfo(programData);
+  if (account === null) {
+    throw new Error(
+      `no ProgramData at ${programData.toBase58()} for program ${PROGRAM_ID.toBase58()}. Deploy it first.`,
+    );
+  }
+
+  const authority = readUpgradeAuthority(account.data);
+  if (authority === null) {
+    throw new Error(
+      "this program has no upgrade authority, so initialize_config can never succeed. " +
+        "Deploy a build whose authority is the intended admin key.",
+    );
+  }
+  if (!authority.equals(admin.keypair.publicKey)) {
+    throw new Error(
+      `the upgrade authority is ${authority.toBase58()}, but the signing key is ` +
+        `${admin.keypair.publicKey.toBase58()} (${admin.path}). They must be the same account.`,
     );
   }
 
   console.log(`Initializing Config with issuer ${issuer.toBase58()}`);
-  await program.methods
-    .initializeConfig(issuer)
-    .accounts({ admin: provider.wallet.publicKey })
-    .rpc();
+  console.log(`  admin:   ${admin.keypair.publicKey.toBase58()}`);
+  console.log(`  program: ${PROGRAM_ID.toBase58()}`);
+  console.log(`  rpc:     ${connection.rpcEndpoint}`);
 
-  const created = await program.account.config.fetch(configPda);
-  console.log(`Config created at ${configPda.toBase58()} (admin ${created.admin.toBase58()})`);
+  const signature = await sendAndConfirm(
+    connection,
+    admin.keypair,
+    initializeConfigInstruction(admin.keypair.publicKey, issuer, programData),
+    "initialize_config",
+  );
+
+  const created = decodeConfig((await connection.getAccountInfo(pda)).data);
+  if (!created.issuer.equals(issuer)) {
+    throw new Error(
+      `transaction landed but Config.issuer is ${created.issuer.toBase58()}, not ${issuer.toBase58()}`,
+    );
+  }
+
+  console.log(`Config created at ${pda.toBase58()} (admin ${created.admin.toBase58()}, bump ${created.bump})`);
+  console.log(`  tx: ${signature}`);
 }
 
 main().catch((error) => {

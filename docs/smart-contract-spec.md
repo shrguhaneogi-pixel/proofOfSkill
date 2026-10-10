@@ -1,7 +1,7 @@
 # Smart Contract Spec — `proof_of_skill`
 
 <DESIGN_DECISIONS>
-- One Anchor program, three instructions, three account types.
+- One Anchor program, four instructions, three account types.
 - `initialize_config` is added beyond the two instructions in the original brief. It is required so the authorized issuer is stored onchain and enforced by the program.
 - No `passed` field on Credential: a credential can only be created when `score >= PASS_THRESHOLD`, so existence implies pass. Fail results are never written onchain.
 - Both the user and the issuer sign `issue_credential`. User pays rent and fees. The issuer never holds user funds.
@@ -74,6 +74,15 @@ Seed for challenge uses the single byte `&[challenge_id]`. Store and reuse the c
 - Handler checks (in order): challenge ID within `MIN..=MAX`; `score <= MAX_SCORE`; `score >= PASS_THRESHOLD`; `evidence_hash != [0u8; 32]`.
 - Effects: write Credential; `profile.completed_count = checked_add(1)`; `profile.reputation = checked_add(score as u32)`; `emit!(CredentialIssued {...})`.
 - Duplicate protection: `init` on an existing PDA fails. The client must pre-check and map the failure to `CredentialAlreadyExists` UX.
+
+### update_config(issuer: Pubkey)
+- Signer: `admin` (mut, payer — `mut` because the fee payer must be writable).
+- Accounts: `config` (mut, seeds=[CONFIG_SEED], bump=config.bump, `has_one = admin @ ProofError::UnauthorizedAdmin`).
+- Handler check: `issuer != Pubkey::default()` → `UnusableIssuer`. The all-zero key is a valid `Pubkey` that can never sign, so accepting it would brick issuance until a redeploy.
+- Effect: replace `config.issuer`; `emit!(ConfigUpdated { admin, previous_issuer, new_issuer })`.
+- Guarded by `config.admin` rather than the upgrade authority: a leaked issuer key can be rotated after the authority has been relinquished, and the admin can rotate the issuer without being able to replace the program.
+- sighash `1d9efcbf0a53db63`, pinned by `update_config_instruction_discriminator` and asserted distinct from `initialize_config` in the Rust test module; the TS mirror is `INSTRUCTION_DISCRIMINATOR_HEX.updateConfig`.
+- Operator path: `node scripts/rotate-issuer.cjs --new-issuer <base58>`.
 </INSTRUCTIONS>
 
 <ERRORS>
@@ -87,6 +96,9 @@ pub enum ProofError {
     #[msg("Signer is not the authorized issuer")] UnauthorizedIssuer,
     #[msg("Arithmetic overflow")] MathOverflow,
     #[msg("Signer is not the program upgrade authority")] UnauthorizedAdmin,
+    // Appended last: Anchor derives each code from the variant's position, so inserting
+    // above it would silently renumber every existing code and break the client mapping.
+    #[msg("New issuer must be a key that can sign")] UnusableIssuer,
 }
 ```
 </ERRORS>
@@ -102,6 +114,15 @@ pub struct CredentialIssued {
     pub issuer: Pubkey,
     pub issued_at: i64,
 }
+
+/// Emitted by `update_config`. Both issuers are recorded so an auditor scanning the
+/// log can tell a rotation from the key it replaced.
+#[event]
+pub struct ConfigUpdated {
+    pub admin: Pubkey,
+    pub previous_issuer: Pubkey,
+    pub new_issuer: Pubkey,
+}
 ```
 </EVENTS>
 
@@ -115,13 +136,16 @@ pub struct CredentialIssued {
 6. Rejects a signer that is not `config.issuer` (`UnauthorizedIssuer`).
 7. Rejects a second credential for the same user + challenge.
 8. Rejects a missing issuer signature.
-9. PDA parity: `lib/solana/pdas.ts` derivations equal accounts created onchain (import or duplicate the seed logic exactly).
+9. `update_config` succeeds for `config.admin` and moves the issuer; the old issuer key is then rejected by `issue_credential` (`UnauthorizedIssuer`) while the new one is accepted.
+10. `update_config` fails for a signer that is not `config.admin` (`UnauthorizedAdmin`), including the former issuer and the upgrade authority itself once `admin` differs.
+11. `update_config` rejects the all-zero issuer (`UnusableIssuer`) and leaves `Config` unchanged.
+12. PDA parity: `lib/solana/pdas.ts` derivations equal accounts created onchain (import or duplicate the seed logic exactly).
 Assert on Anchor error codes/names, not on message substrings alone.
 </REQUIRED_TESTS>
 
 <SECURITY_CHECKLIST>
 - [ ] Every PDA has seeds + bump constraints; no account passed unchecked.
-- [ ] `has_one` links config→issuer and profile→user.
+- [ ] `has_one` links config→issuer, profile→user, and config→admin (the `update_config` guard).
 - [ ] All arithmetic is checked.
 - [ ] No lamport transfer other than rent via `init`.
 - [ ] No `UncheckedAccount` (or each has a `/// CHECK:` justification).

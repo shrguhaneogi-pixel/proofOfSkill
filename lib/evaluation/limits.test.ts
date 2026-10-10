@@ -36,7 +36,11 @@ describe("limits.ts matches docs/api-schema.md", () => {
   });
 
   it("rejects exactly at each boundary", () => {
-    const base = { challengeId: 1, code: "x" };
+    const base = {
+      walletPublicKey: "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+      challengeId: 1,
+      code: "x",
+    };
     const atMin = "a".repeat(EXPLANATION_RANGE.min);
     const belowMin = "a".repeat(EXPLANATION_RANGE.min - 1);
     const aboveMax = "a".repeat(EXPLANATION_RANGE.max + 1);

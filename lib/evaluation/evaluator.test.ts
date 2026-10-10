@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { CHALLENGES } from "../challenges/data";
 import { canonicalizeSubmission } from "../hashing/canonicalize";
-import { sha256Hex } from "../hashing/evidence-hash";
+import { evidencePreimage, sha256Hex } from "../hashing/evidence-hash";
+import type { RepositoryEvidence } from "./github";
 import { TEMPERATURE, buildEvidenceHash, evaluateSubmission, extractJsonObject } from "./evaluator";
-import { UNTRUSTED_END } from "./prompt";
+import { UNTRUSTED_END, UNTRUSTED_START } from "./prompt";
 import type { Submission } from "./schema";
 import type { ChatCompletionClient, EvaluatorRequestBody, EvaluatorResponseBody } from "./types";
 
@@ -17,6 +18,7 @@ const challenge = CHALLENGES[0];
 const RUBRIC_IDS = challenge.rubric.map((criterion) => criterion.id);
 
 const submission: Submission = {
+  walletPublicKey: "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
   challengeId: 1,
   explanation: "A PDA is derived from seeds and the program id, so no wallet can sign for it.".padEnd(120, "."),
   code: 'let (pda, bump) = Pubkey::find_program_address(&[b"profile"], program_id);',
@@ -43,6 +45,10 @@ function stubClient(model: string, respond: (call: number) => EvaluatorResponseB
 
 function textResponse(content: string | null): EvaluatorResponseBody {
   return { choices: [{ message: { content } }] };
+}
+
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
 }
 
 function grades(points: Record<string, number>): EvaluatorResponseBody {
@@ -197,6 +203,104 @@ describe("evaluateSubmission: the model cannot decide the outcome", () => {
       expect(outcome.data.score).toBe(69);
       expect(outcome.data.passed).toBe(false);
     }
+  });
+});
+
+/**
+ * Repository evidence (Phase 3): what the model is shown and what the evidence
+ * hash commits to — and the guarantee that neither of those changes how a score
+ * is computed.
+ */
+
+function repoEvidence(overrides: Partial<RepositoryEvidence> = {}): RepositoryEvidence {
+  return {
+    url: "https://github.com/acme/skill-proof",
+    owner: "acme",
+    repo: "skill-proof",
+    ref: "main",
+    treeOid: "8f3ab1c0d9e2",
+    files: [{ path: "src/lib.rs", content: "fn derive_pda() {}", byteLength: 18, sha: "b1aa" }],
+    candidatesConsidered: 3,
+    totalBytes: 18,
+    skipped: { ignored: 0, oversize: 0, unreadable: 0 },
+    truncated: { files: false, bytes: false, scan: false },
+    digest: "a".repeat(64),
+    fetchedAt: "2026-10-10T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+const ALL_FULL = { pda_derivation: 30, account_relationships: 25, security_implications: 25, clarity: 20 };
+
+describe("evaluateSubmission with repository evidence", () => {
+  it("puts the fetched tree into the prompt it sends", async () => {
+    const client = stubClient("m", () => grades(ALL_FULL));
+    const outcome = await evaluateSubmission(challenge, submission, client, FAST, repoEvidence());
+
+    expect(outcome.ok).toBe(true);
+    const prompt = client.calls[0].messages[1].content;
+    expect(prompt).toContain("REPOSITORY EVIDENCE");
+    expect(prompt).toContain("tree: 8f3ab1c0d9e2");
+    expect(prompt).toContain("fn derive_pda() {}");
+    expect(occurrences(prompt, UNTRUSTED_START)).toBe(1);
+    expect(occurrences(prompt, UNTRUSTED_END)).toBe(1);
+  });
+
+  it("scores identically with and without evidence — the model still decides nothing", async () => {
+    const withEvidence = await evaluateSubmission(challenge, submission, stubClient("m", () => grades(ALL_FULL)), FAST, repoEvidence());
+    const without = await evaluateSubmission(challenge, submission, stubClient("m", () => grades(ALL_FULL)), FAST);
+
+    expect(withEvidence.ok && without.ok).toBe(true);
+    if (!withEvidence.ok || !without.ok) {
+      return;
+    }
+    expect(withEvidence.data.score).toBe(without.data.score);
+    expect(withEvidence.data.passed).toBe(without.data.passed);
+    expect(withEvidence.data.evaluatedCriteria).toEqual(without.data.evaluatedCriteria);
+    expect(withEvidence.data.evidenceHash).not.toBe(without.data.evidenceHash);
+  });
+
+  it("still refuses a 69.4 total with evidence present", async () => {
+    const borderline = grades({ pda_derivation: 29.4, account_relationships: 25, security_implications: 15 });
+    const outcome = await evaluateSubmission(challenge, submission, stubClient("m", () => borderline), FAST, repoEvidence());
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.data.score).toBe(69);
+      expect(outcome.data.passed).toBe(false);
+    }
+  });
+
+  it("folds the tree digest into the evidence hash", async () => {
+    const evidence = repoEvidence();
+    const outcome = await evaluateSubmission(challenge, submission, stubClient("m", () => grades({})), FAST, evidence);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) {
+      return;
+    }
+    const canonical = canonicalizeSubmission(submission);
+    expect(outcome.data.evidenceHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(outcome.data.evidenceHash).toBe(await sha256Hex(evidencePreimage(canonical, evidence.digest)));
+    expect(outcome.data.evidenceHash).toBe(await buildEvidenceHash(submission, evidence.digest));
+    expect(outcome.data.evidenceHash).not.toBe(await buildEvidenceHash(submission));
+  });
+
+  it("a different tree digest is a different evidence hash", async () => {
+    const first = await buildEvidenceHash(submission, repoEvidence({ digest: "b".repeat(64) }).digest);
+    const second = await buildEvidenceHash(submission, repoEvidence({ digest: "c".repeat(64) }).digest);
+    expect(first).not.toBe(second);
+  });
+
+  it("leaves the hash untouched when no content was fetched", async () => {
+    const legacy = await sha256Hex(canonicalizeSubmission(submission));
+    await expect(buildEvidenceHash(submission)).resolves.toBe(legacy);
+    await expect(buildEvidenceHash(submission, undefined)).resolves.toBe(legacy);
+    await expect(buildEvidenceHash(submission, "")).resolves.toBe(legacy);
+  });
+
+  it("makes the same number of upstream calls with evidence as without", async () => {
+    const client = stubClient("m", () => grades({}));
+    await evaluateSubmission(challenge, submission, client, FAST, repoEvidence());
+    expect(client.calls).toHaveLength(1);
   });
 });
 

@@ -21,7 +21,15 @@ export const ATTESTATION_SECRET_ENV = "ATTESTATION_SECRET";
 // module that mirrors the onchain constants instead of being restated here.
 export { MAX_SCORE, PASS_THRESHOLD };
 
-/** Short-lived by design: the MVP token is not bound to a wallet (see README limitations). */
+/**
+ * Bumped when the payload layout changes. The value is signed, so tokens minted under an
+ * earlier version fail the `v` literal below and are rejected as malformed — rotating
+ * `ATTESTATION_SECRET` alone would not have retired unstamped tokens that were still
+ * inside their 15 minute window.
+ */
+export const ATTESTATION_VERSION = 2;
+
+/** Short-lived, single-use, and bound to one wallet: see `walletPublicKey`. */
 export const ATTESTATION_TTL_SECONDS = 15 * 60;
 
 /** Matches `docs/api-schema.md`: ">= 32 random bytes, hex/base64". */
@@ -30,6 +38,14 @@ export const MIN_KEY_BYTES = 32;
 const HEX_MATERIAL = /^(?:[0-9a-fA-F]{2})+$/;
 const BASE64_MATERIAL = /^[A-Za-z0-9+/_-]{16,}={0,2}$/;
 const BASE64URL_SEGMENT = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * A base58 string of the length a 32 byte ed25519 public key produces. Shape only:
+ * `lib/solana/codecs.ts` `parsePublicKey` is the authoritative decode, and callers sign
+ * the canonical string it returns, so a token never carries a non-canonical spelling of
+ * an address that would fail to compare equal to the one `/api/issue` parses.
+ */
+const WALLET_PUBLIC_KEY_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 // Challenge ids are the contiguous range declared in lib/challenges/types.ts,
 // so min/max is exactly the accepted set without hardcoding a second copy.
@@ -41,6 +57,8 @@ const MAX_CHALLENGE_ID = CHALLENGE_IDS[CHALLENGE_IDS.length - 1];
  * on), so it survives a JSON round trip without a Date.
  */
 export const AttestationPayloadSchema = z.object({
+  v: z.literal(ATTESTATION_VERSION),
+  walletPublicKey: z.string().regex(WALLET_PUBLIC_KEY_PATTERN),
   challengeId: z.int().min(MIN_CHALLENGE_ID).max(MAX_CHALLENGE_ID),
   score: z.int().min(0).max(MAX_SCORE),
   evidenceHash: z.string().regex(/^([0-9a-f]{2}){32}$/),
@@ -49,8 +67,9 @@ export const AttestationPayloadSchema = z.object({
 
 export type AttestationPayload = z.infer<typeof AttestationPayloadSchema>;
 
-/** What the caller supplies; `exp` is derived from the server clock. */
+/** What the caller supplies; `v` is stamped and `exp` is derived from the server clock. */
 export type AttestationClaims = {
+  walletPublicKey: string;
   challengeId: number;
   score: number;
   evidenceHash: string;
@@ -58,7 +77,7 @@ export type AttestationClaims = {
 
 export type SignResult = { ok: true; data: string } | { ok: false; error: string };
 
-const AttestationClaimsSchema = AttestationPayloadSchema.omit({ exp: true });
+const AttestationClaimsSchema = AttestationPayloadSchema.omit({ exp: true, v: true });
 
 /**
  * Accepts hex, base64/base64url, or plain text secret material and returns the
@@ -129,6 +148,8 @@ export function signatureMatches(payloadJson: string, provided: string, key: Uin
  */
 function payloadJsonFor(claims: AttestationClaims, exp: number): string {
   return JSON.stringify({
+    v: ATTESTATION_VERSION,
+    walletPublicKey: claims.walletPublicKey,
     challengeId: claims.challengeId,
     score: claims.score,
     evidenceHash: claims.evidenceHash,

@@ -387,6 +387,35 @@ fn issue_credential_instruction_discriminator() {
     );
 }
 
+#[test]
+fn update_config_instruction_discriminator() {
+    assert_eq!(
+        hex(&<instruction::UpdateConfig as Discriminator>::DISCRIMINATOR),
+        "1d9efcbf0a53db63"
+    );
+}
+
+/// `update_config` takes the same argument as `initialize_config` — one bare
+/// `Pubkey` — so the client can reuse the encoder's layout, but its sighash must
+/// differ or a rotation would be indistinguishable from a first-time register.
+#[test]
+fn update_config_wire_format_is_a_distinct_sighash_over_the_same_argument() {
+    let issuer = pubkey(USER);
+    let data = instruction::UpdateConfig { issuer }.data();
+    assert_eq!(data.len(), 8 + 32);
+    assert_eq!(
+        &data[..8],
+        <instruction::UpdateConfig as Discriminator>::DISCRIMINATOR,
+        "update_config must carry its own sighash"
+    );
+    assert_ne!(
+        &data[..8],
+        <instruction::InitializeConfig as Discriminator>::DISCRIMINATOR,
+        "update_config must not collide with initialize_config"
+    );
+    assert_eq!(&data[8..], issuer.as_ref());
+}
+
 /// `InstructionData::data()` is exactly the 8-byte sighash plus borsh arguments
 /// the client must put on the wire — the byte-for-byte contract for a hand
 /// built transaction.
@@ -432,6 +461,7 @@ fn instruction_wire_format() {
 fn instruction_discriminators_are_distinct_from_each_other_and_from_accounts() {
     let mut all: Vec<[u8; 8]> = vec![
         <instruction::InitializeConfig as Discriminator>::DISCRIMINATOR,
+        <instruction::UpdateConfig as Discriminator>::DISCRIMINATOR,
         <instruction::InitializeProfile as Discriminator>::DISCRIMINATOR,
         <instruction::IssueCredential as Discriminator>::DISCRIMINATOR,
         <Config as Discriminator>::DISCRIMINATOR,

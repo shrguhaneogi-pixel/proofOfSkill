@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 import { ChallengeWorkspaceHeader } from "@/components/challenge/workspace-header";
 import {
@@ -20,6 +21,7 @@ import type { Challenge } from "@/lib/challenges/types";
 type ApiError = { error?: { code?: string; message?: string } };
 
 export function ChallengeWorkspace({ challenge }: { challenge: Challenge }) {
+  const { publicKey } = useWallet();
   const stored = useStoredEvaluation(challenge.id);
   const [fresh, setFresh] = useState<StoredEvaluation | null>(null);
   const [evaluating, setEvaluating] = useState(false);
@@ -39,13 +41,25 @@ export function ChallengeWorkspace({ challenge }: { challenge: Challenge }) {
 
   const handleSubmit = useCallback(
     async (submission: { challengeId: number; explanation: string; code: string; repoUrl?: string }) => {
+      // The attestation is bound to the wallet that owns the credential, so there is
+      // nothing to evaluate until one is connected. Checked here rather than leaving
+      // the server to reject the body with a generic INVALID_SUBMISSION.
+      if (!publicKey) {
+        setApiError({
+          code: "WALLET_NOT_CONNECTED",
+          message:
+            "Connect your Solana wallet first. The credential is issued to the connected wallet, so the evaluation is bound to it.",
+        });
+        return;
+      }
+
       setEvaluating(true);
       setApiError(null);
       try {
         const response = await fetch("/api/evaluate", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(submission),
+          body: JSON.stringify({ ...submission, walletPublicKey: publicKey.toBase58() }),
         });
         const body = (await response.json()) as StoredEvaluation & ApiError;
 
@@ -69,7 +83,7 @@ export function ChallengeWorkspace({ challenge }: { challenge: Challenge }) {
         setEvaluating(false);
       }
     },
-    [],
+    [publicKey],
   );
 
   const startOver = useCallback(() => {

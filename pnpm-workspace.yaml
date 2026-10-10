@@ -1,6 +1,9 @@
 allowBuilds:
   # Optional native accelerators for `ws`; the pure-JS fallback is used instead.
   bufferutil: false
+  # drizzle-kit shells out to the esbuild binary its postinstall installs; without this
+  # the value was the scaffold's placeholder text, which pnpm reads as "not allowed".
+  esbuild: true
   sharp: false
   unrs-resolver: false
   utf-8-validate: false

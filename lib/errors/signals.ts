@@ -13,6 +13,7 @@ export const ATTESTATION_REASON_KEYS: Record<AttestationRejectionCode, ErrorKey>
   invalid_signature: "attestation_invalid_signature",
   expired: "attestation_expired",
   below_threshold: "attestation_below_threshold",
+  wallet_mismatch: "attestation_wallet_mismatch",
   malformed: "attestation_malformed",
   secret_missing: "attestation_secret_missing",
 };

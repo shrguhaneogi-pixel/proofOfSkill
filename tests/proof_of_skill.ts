@@ -73,16 +73,27 @@ describe("proof_of_skill", () => {
     );
   }
 
+  /**
+   * Config is a single global account, so the suite cannot re-`init` it per test:
+   * `initializeConfig` after the first one fails on `init` of an existing address. The
+   * earlier filter compared `memcmp` at offset 0 — the 8-byte account discriminator —
+   * against a PDA address, so it never matched and every test re-ran the init. Read the
+   * account directly, and rotate the issuer via `update_config` when it already exists,
+   * which keeps each test signing with a key the program currently accepts.
+   */
   async function initializeIssuer(): Promise<anchor.web3.Keypair> {
     const issuer = anchor.web3.Keypair.generate();
     const [configPda] = deriveConfigPda();
-    const existing = await program.account.config.fetchAll([
-      { memcmp: { offset: 0, bytes: configPda.toBase58() } },
-    ]);
-    if (existing.length === 0) {
-      await program.methods.initializeConfig(issuer.publicKey).accounts({
-        admin: wallet.publicKey,
-      }).rpc();
+    const existing = await program.account.config.fetchNullable(configPda);
+
+    if (existing === null) {
+      await program.methods.initializeConfig(issuer.publicKey)
+        .accounts({ admin: wallet.publicKey })
+        .rpc();
+    } else {
+      await program.methods.updateConfig(issuer.publicKey)
+        .accounts({ admin: wallet.publicKey })
+        .rpc();
     }
     return issuer;
   }
@@ -336,5 +347,92 @@ describe("proof_of_skill", () => {
     const [expectedConfig] = deriveConfigPda();
     const createdConfig = await program.account.config.fetch(expectedConfig);
     assert.equal(createdConfig.issuer.toBase58(), issuer.publicKey.toBase58());
+  });
+
+  it("update_config moves the issuer and the old key is then refused", async () => {
+    const first = await initializeIssuer();
+    const second = anchor.web3.Keypair.generate();
+    const [configPda] = deriveConfigPda();
+
+    await program.methods.updateConfig(second.publicKey)
+      .accounts({ admin: wallet.publicKey })
+      .rpc();
+
+    const config = await program.account.config.fetch(configPda);
+    assert.equal(config.issuer.toBase58(), second.publicKey.toBase58());
+    assert.equal(config.admin.toBase58(), wallet.publicKey.toBase58());
+
+    const user = newUser();
+    await fund(user, anchor.web3.LAMPORTS_PER_SOL);
+    await program.methods.initializeProfile()
+      .accounts({ user: user.publicKey })
+      .signers([user])
+      .rpc();
+
+    let staleIssuerRejected = false;
+    try {
+      await program.methods.issueCredential(5, 90, Array.from(nonZeroHash()))
+        .accounts({ user: user.publicKey, issuer: first.publicKey })
+        .signers([user, first])
+        .rpc();
+    } catch (error) {
+      staleIssuerRejected = true;
+      assert.equal(anchorErrorName(error), "UnauthorizedIssuer");
+    }
+    assert.isTrue(staleIssuerRejected, "the replaced issuer key must no longer be accepted");
+
+    await program.methods.issueCredential(5, 90, Array.from(nonZeroHash()))
+      .accounts({ user: user.publicKey, issuer: second.publicKey })
+      .signers([user, second])
+      .rpc();
+
+    const [credentialPda] = deriveCredentialPda(user.publicKey, 5);
+    const credential = await program.account.credential.fetch(credentialPda);
+    assert.equal(credential.issuer.toBase58(), second.publicKey.toBase58());
+  });
+
+  it("update_config fails for a signer that is not config.admin", async () => {
+    await initializeIssuer();
+    const impostor = anchor.web3.Keypair.generate();
+    await fund(impostor, anchor.web3.LAMPORTS_PER_SOL);
+
+    let rejected = false;
+    try {
+      await program.methods.updateConfig(impostor.publicKey)
+        .accounts({ admin: impostor.publicKey })
+        .signers([impostor])
+        .rpc();
+    } catch (error) {
+      rejected = true;
+      assert.equal(anchorErrorName(error), "UnauthorizedAdmin");
+    }
+    assert.isTrue(rejected, "expected a non-admin signer to be rejected");
+
+    const [configPda] = deriveConfigPda();
+    const config = await program.account.config.fetch(configPda);
+    assert.equal(config.admin.toBase58(), wallet.publicKey.toBase58(), "admin must be unchanged");
+  });
+
+  it("update_config rejects the all-zero issuer and leaves Config untouched", async () => {
+    const issuer = await initializeIssuer();
+    const [configPda] = deriveConfigPda();
+
+    let rejected = false;
+    try {
+      await program.methods.updateConfig(new anchor.web3.PublicKey(new Uint8Array(32)))
+        .accounts({ admin: wallet.publicKey })
+        .rpc();
+    } catch (error) {
+      rejected = true;
+      assert.equal(anchorErrorName(error), "UnusableIssuer");
+    }
+    assert.isTrue(rejected, "expected the all-zero issuer to be rejected");
+
+    const config = await program.account.config.fetch(configPda);
+    assert.equal(
+      config.issuer.toBase58(),
+      issuer.publicKey.toBase58(),
+      "a rejected rotation must not mutate Config",
+    );
   });
 });

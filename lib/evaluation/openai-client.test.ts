@@ -10,6 +10,7 @@ import type { EvaluatorRequestBody } from "./types";
 
 const challenge = CHALLENGES[0];
 const submission: Submission = {
+  walletPublicKey: "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
   challengeId: 1,
   explanation: "A PDA is derived from seeds and the program id, so no wallet can sign for it.".padEnd(120, "."),
   code: "fn main() {}",

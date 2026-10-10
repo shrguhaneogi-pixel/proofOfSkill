@@ -28,6 +28,13 @@ pub mod proof_of_skill {
         initialize_config::handle_initialize_config(ctx, issuer)
     }
 
+    /// Rotates the authorized issuer against an existing Config, so a leaked
+    /// issuer key can be replaced without redeploying the program. Guarded by
+    /// `has_one = admin` on `config.admin`.
+    pub fn update_config(ctx: Context<UpdateConfig>, issuer: Pubkey) -> Result<()> {
+        update_config::handle_update_config(ctx, issuer)
+    }
+
     pub fn initialize_profile(ctx: Context<InitializeProfile>) -> Result<()> {
         initialize_profile::handle_initialize_profile(ctx)
     }

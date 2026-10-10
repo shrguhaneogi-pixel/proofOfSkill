@@ -40,12 +40,18 @@ Catalogue lives in `lib/challenges/data.ts`, typed, with a unit test asserting w
 <SUBMISSION>
 ```ts
 const SubmissionSchema = z.object({
+  walletPublicKey: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/),
   challengeId: z.number().int().min(1).max(5),
   explanation: z.string().trim().min(100).max(4000),
   code: z.string().trim().min(1).max(8000),
   repoUrl: z.string().url().regex(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/).optional(),
 });
 ```
+`walletPublicKey` is required: the attestation minted on a pass is bound to it, so the
+credential can only be redeemed by the wallet that was evaluated. The regex is a shape
+check shared with the browser form; `/api/evaluate` canonicalises through
+`parsePublicKey` and signs the base58 string that decode returns, so a non-canonical
+spelling can never produce a token that fails to match at redemption.
 </SUBMISSION>
 
 <EVIDENCE_HASH>
@@ -98,24 +104,26 @@ type EvaluationResult = {
 <ATTESTATION>
 Purpose: the browser cannot claim `passed = true`; only a token minted by `/api/evaluate` unlocks `/api/issue`.
 - Format: `base64url(payloadJson) + "." + base64url(HMAC_SHA256(ATTESTATION_SECRET, payloadJson))`.
-- Payload: `{ challengeId, score, evidenceHash, exp }`, `exp` = now + 15 minutes.
-- Verify with `crypto.timingSafeEqual`; reject on bad signature, expiry, or score < 70.
-- Known MVP limitation (document in README): the token is not bound to a wallet at mint time, so whoever holds it can redeem it once; the Credential PDA uniqueness prevents repeat issuance per wallet/challenge.
+- Payload, in this exact signed key order: `{ v, walletPublicKey, challengeId, score, evidenceHash, exp }`, `exp` = now + 15 minutes.
+- `v` is the payload version (`ATTESTATION_VERSION`, currently `2`). Bumping it retires every older token — including unstamped v1 tokens — because `v` is inside the signed body, so an old token fails the schema rather than silently verifying. Rotating `ATTESTATION_SECRET` also invalidates outstanding tokens, but abruptly: anyone inside their 15 minute window must evaluate again.
+- Verify with `crypto.timingSafeEqual`; the signature is checked before any payload field is read, then wallet binding, then expiry, then score < 70.
+- Wallet binding: `/api/issue` passes the caller's canonical wallet as `expectedWalletPublicKey`. A token minted for Wallet_A and presented by Wallet_B is rejected `403 WALLET_MISMATCH` and never reaches the transaction builder.
+- Closed limitation: the token previously was not bound to a wallet, so a forwarded or stolen token could be redeemed by whoever held it. Per-wallet, per-challenge uniqueness was always enforced by the Credential PDA; it is not a substitute for binding, because the first redeemer wins.
 </ATTESTATION>
 
 <ROUTES>
 ### POST /api/evaluate
-Body: `Submission`. Success `200`: `EvaluationResult`. Errors: `400 INVALID_SUBMISSION`, `404 CHALLENGE_NOT_FOUND`, `429 RATE_LIMITED`, `503 AI_NOT_CONFIGURED`, `502 AI_INVALID_OUTPUT`, `504 AI_TIMEOUT`, `502 AI_UPSTREAM_ERROR`.
+Body: `Submission`. Success `200`: `EvaluationResult`. Errors: `400 INVALID_SUBMISSION`, `400 INVALID_WALLET`, `404 CHALLENGE_NOT_FOUND`, `429 RATE_LIMITED`, `503 AI_NOT_CONFIGURED`, `502 AI_INVALID_OUTPUT`, `504 AI_TIMEOUT`, `502 AI_UPSTREAM_ERROR`.
 Apply per-IP in-memory rate limiting (simple, documented as MVP-grade) and a request body size cap.
 
 ### POST /api/issue
 Body: `{ attestation: string, wallet: string /* base58 */ }`.
-Steps: verify attestation → validate wallet as a PublicKey → fetch Config, Profile, Credential PDAs → if Credential exists return `409 CREDENTIAL_EXISTS` → build `VersionedTransaction` with `[initialize_profile (if absent), issue_credential(challengeId, score, evidenceHash)]`, fee payer = wallet, recent blockhash from RPC → co-sign with the issuer keypair via `transaction.sign([issuer])` → return:
+Steps: validate wallet as a PublicKey and canonicalise it → verify attestation (signature first, then the wallet binding, then expiry, then threshold) → fetch Config, Profile, Credential PDAs → if Credential exists return `409 CREDENTIAL_EXISTS` → build `VersionedTransaction` with `[initialize_profile (if absent), issue_credential(challengeId, score, evidenceHash)]`, fee payer = wallet, recent blockhash from RPC → co-sign with the issuer keypair via `transaction.sign([issuer])` → return:
 ```ts
 { transaction: string /* base64 */, blockhash: string, lastValidBlockHeight: number,
   credentialPda: string, profilePda: string }
 ```
-Errors: `400 INVALID_ATTESTATION`, `400 INVALID_WALLET`, `409 CREDENTIAL_EXISTS`, `503 ISSUER_NOT_CONFIGURED`, `502 RPC_ERROR`.
+Errors: `400 INVALID_ATTESTATION`, `400 INVALID_WALLET`, `403 WALLET_MISMATCH`, `409 CREDENTIAL_EXISTS`, `503 ISSUER_NOT_CONFIGURED`, `502 RPC_ERROR`.
 
 All error bodies: `{ error: { code: string, message: string } }` where `message` is user-safe. Never leak stack traces, env values, or raw upstream responses.
 </ROUTES>

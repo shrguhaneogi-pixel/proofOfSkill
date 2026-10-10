@@ -2,13 +2,17 @@
  * The AI evaluator (api-schema.md → EVALUATOR_CONTRACT).
  *
  * Contract with the rest of the app:
- * - `evaluateSubmission(challenge, submission, client)` performs at most
- *   `MAX_ATTEMPTS` upstream calls, enforces its own deadline, and never trusts
- *   the model for a score, a total, or a pass — `scoring.ts` computes those.
+ * - `evaluateSubmission(challenge, submission, client, options, repoEvidence)`
+ *   performs at most `MAX_ATTEMPTS` upstream calls, enforces its own deadline, and
+ *   never trusts the model for a score, a total, or a pass — `scoring.ts` computes
+ *   those. `repoEvidence` only changes what the model is shown and what the
+ *   evidence hash commits to; it changes nothing about scoring.
  * - It reads no `process.env` and decides no configuration. The route handler
  *   owns env: it validates config and passes either `createOpenAIClient(config)`
  *   (see `openai-client.ts`) or the result of `evaluationWithoutApiKey(...)`
- *   (see `dev-fallback.ts`).
+ *   (see `dev-fallback.ts`). Fetching a repository is the route's job too
+ *   (`github.ts` `fetchRepositoryEvidence`); this module never reaches the network
+ *   itself.
  * - It returns a typed outcome and never throws for a validation failure.
  * - It does **not** mint the attestation token: `lib/attestation` owns that. The
  *   field exists on `EvaluationResult` because the spec and the UI read it, but no
@@ -17,7 +21,10 @@
 
 import type { Challenge } from "../challenges/types";
 import { canonicalizeSubmission } from "../hashing/canonicalize";
-import { sha256Hex } from "../hashing/evidence-hash";
+import { sha256EvidenceHash } from "../hashing/evidence-hash";
+// Type-only: the evaluator must not acquire a dependency on octokit or on the
+// network path, only on the shape of what the route already fetched.
+import type { RepositoryEvidence } from "./github";
 import { buildMessages, neutraliseDelimiters } from "./prompt";
 import { parseModelEvaluation, type ModelEvaluation, type Submission } from "./schema";
 import { scoreEvaluation } from "./scoring";
@@ -50,9 +57,16 @@ export const TEMPERATURE = 0.15;
 const MAX_REASON_CHARS = 120;
 const UNUSABLE_RESPONSE = "the provider response was not a JSON object we could grade";
 
-/** Hex SHA-256 of the canonical submission; also needed by `/api/issue`. */
-export function buildEvidenceHash(submission: Submission): Promise<string> {
-  return sha256Hex(canonicalizeSubmission(submission));
+/**
+ * Hex SHA-256 of the canonical submission; also needed by `/api/issue`.
+ *
+ * `repoDigest` is `RepositoryEvidence.digest` — the digest of the tree we actually
+ * read. Omitting it (or passing an empty string) produces exactly the historical
+ * preimage, so an evaluation with no fetched content hashes the same as one did
+ * before repository inspection existed.
+ */
+export function buildEvidenceHash(submission: Submission, repoDigest?: string): Promise<string> {
+  return sha256EvidenceHash(canonicalizeSubmission(submission), repoDigest);
 }
 
 /**
@@ -99,11 +113,15 @@ function requestFor(
   challenge: Challenge,
   submission: Submission,
   client: ChatCompletionClient,
+  repoEvidence: RepositoryEvidence | undefined,
   repairNote?: string[],
 ): EvaluatorRequestBody {
   return {
     model: client.model,
-    messages: buildMessages(challenge, submission, repairNote ? { repairNote } : {}),
+    messages: buildMessages(challenge, submission, {
+      ...(repairNote === undefined ? {} : { repairNote }),
+      ...(repoEvidence === undefined ? {} : { repoEvidence }),
+    }),
     temperature: TEMPERATURE,
     response_format: { type: "json_object" },
   };
@@ -128,11 +146,20 @@ function interpret(response: EvaluatorResponseBody): Interpreted {
   return { ok: true, raw: validated.data };
 }
 
+/**
+ * `repoEvidence` is a trailing optional argument rather than a field of
+ * `EvaluateOptions` so the call sites that already exist — and every test stub —
+ * keep compiling unchanged. It is display and commitment only: the bytes are shown
+ * to the model, and its digest joins the evidence hash. Score, `passed`, and the
+ * retry budget are computed exactly as they were without it, by `scoring.ts`, from
+ * server-side weights.
+ */
 export async function evaluateSubmission(
   challenge: Challenge,
   submission: Submission,
   client: ChatCompletionClient,
   options: EvaluateOptions = {},
+  repoEvidence?: RepositoryEvidence,
 ): Promise<EvaluationOutcome> {
   if (client.model.trim() === "") {
     return {
@@ -143,13 +170,13 @@ export async function evaluateSubmission(
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
-  const evidenceHash = await buildEvidenceHash(submission);
+  const evidenceHash = await buildEvidenceHash(submission, repoEvidence?.digest);
 
   let repairNote: string[] | undefined;
   let lastReason = UNUSABLE_RESPONSE;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const body = requestFor(challenge, submission, client, repairNote);
+    const body = requestFor(challenge, submission, client, repoEvidence, repairNote);
 
     let response: EvaluatorResponseBody;
     try {

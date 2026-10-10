@@ -1,0 +1,209 @@
+# Builds and tests the Anchor program on Linux — the one thing this project's Windows
+# development host cannot do.
+#
+# WHY THIS FILE EXISTS
+# docs/living-notes.md → Blockers records three tried hypotheses for why `anchor build`
+# cannot produce a `.so` on the maintainer's machine: anchor-cli 0.29 shells out to
+# `cargo-build-bpf` (absent from Solana 1.18), `cargo build-sbf` needs a symlinked
+# platform-tools install ("A required privilege is not held by the client", os error 1314),
+# and reusing existing tools finds none. `cargo check`, `cargo clippy`, `cargo fmt` and
+# `cargo test` all pass there; only the SBF compile and the validator-backed tests are
+# blocked. Everything below the "Rust gate" label is therefore running for the first time
+# in CI, not merely re-running something already green — treat a failure there as new
+# information about the toolchain, not as a regression.
+#
+# TOOLCHAIN CHOICE: install the CLIs on `ubuntu-latest` rather than run the job in a
+# container image. Two reasons, both concrete:
+#   1. `Anchor.toml` → [scripts] test runs `pnpm exec ts-mocha`, so `anchor test` needs this
+#      repo's Node/pnpm (package.json → packageManager is pnpm@12.8.1; Next.js 16 requires
+#      Node 20+). `projectserum/build:v0.29.0` carries the Node of its era, and a job
+#      container would put every JS step behind that older runtime.
+#   2. The Anchor v0.29.0 GitHub release publishes no binary assets (verified against
+#      api.github.com/repos/coral-xyz/anchor/releases/tags/v0.29.0: assets = []), so the CLI
+#      comes from crates.io either way; installing it explicitly keeps the versions auditable.
+#
+# VERSIONS: anchor-cli must match the program's `anchor-lang 0.29.0`
+# (programs/proof_of_skill/Cargo.toml). Solana CLI stays on 1.18.x because anchor-lang 0.29
+# and `Cargo.lock` are pinned to that era — including deliberately older entries (blake3
+# 1.5.5, borsh 1.5.7, indexmap 2.7.0, proc-macro-crate 3.2.0, jobserver 0.1.32) so the cargo
+# inside 1.18's platform-tools can parse the lockfile. Do not "fix" those with a `cargo
+# update`: the host gate uses rustc/cargo 1.98.1 while `cargo build-sbf` uses platform-tools.
+#
+# SECRETS: none. This workflow never deploys, never signs, and never reads an env var that
+# holds a key. The keypair it mints is a throwaway localnet fee payer.
+name: anchor
+
+on:
+  pull_request:
+    paths:
+      - "programs/**"
+      # `anchor test` runs this directory (Anchor.toml → [scripts]), so a change here is a
+      # change to the gate and must not be able to merge unchecked.
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Anchor.toml"
+      - "app/**"
+      - "lib/**"
+      - ".github/workflows/anchor.yml"
+  push:
+    paths:
+      - "programs/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Anchor.toml"
+      - "app/**"
+      - "lib/**"
+      - ".github/workflows/anchor.yml"
+
+permissions:
+  contents: read
+
+# A superseded push or PR run is cancelled instead of burning the SBF compile twice.
+concurrency:
+  group: anchor-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The toolchain `cargo fmt --check` / `clippy -D warnings` / `cargo test` pass with on the
+  # maintainer's host. Pinning it keeps a future rustc from turning a green gate red.
+  RUST_TOOLCHAIN: "1.98.1"
+  # Build anchor-cli with a compiler from its own era: its published lockfile pins
+  # solana-sdk 1.14-era dependencies.
+  ANCHOR_CLI_TOOLCHAIN: "1.79.0"
+  ANCHOR_VERSION: "0.29.0"
+  SOLANA_VERSION: "1.18.26"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  program-and-app:
+    name: Program (SBF) + app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # `pnpm/action-setup@v4` with no `version:` reads package.json → packageManager
+      # (pnpm@12.8.1), so there is one place that names the package manager.
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      # Installed before the Rust gate because `anchor test` runs `pnpm exec ts-mocha`
+      # (Anchor.toml → [scripts]); the JS checks at the bottom reuse this same install.
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+          rustup toolchain install "$ANCHOR_CLI_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+          rustc --version
+          cargo --version
+
+      # `~/.cargo/bin` is in the cache so the anchor-cli build below is skipped on a hit;
+      # `target` is the cargo build cache for the workspace.
+      - name: Cache cargo
+        id: cargo-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ env.RUST_TOOLCHAIN }}-anchor-${{ env.ANCHOR_VERSION }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-${{ env.RUST_TOOLCHAIN }}-anchor-${{ env.ANCHOR_VERSION }}-cargo-
+
+      - name: Install Solana CLI
+        # The official release-site installer, the same URL anchor-cli itself shells out to
+        # for a `--solana-version` build (anchor-cli-0.29.0/src/lib.rs:1504). Verified live:
+        # https://release.anza.xyz/v1.18.26/install serves the POSIX installer with
+        # SOLANA_RELEASE=v1.18.26.
+        run: sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install)"
+
+      - name: Add Solana CLI to PATH
+        run: echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Verify the Solana toolchain
+        run: |
+          solana --version
+          solana-keygen --help > /dev/null
+          cargo build-sbf --help > /dev/null
+
+      - name: Install anchor-cli
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
+        # crates.io, `--locked` so the published Cargo.lock is honoured, built with the
+        # era-appropriate toolchain (see ANCHOR_CLI_TOOLCHAIN). This takes several minutes;
+        # the cache step above is why it happens rarely.
+        run: cargo +"$ANCHOR_CLI_TOOLCHAIN" install --locked --version "$ANCHOR_VERSION" anchor-cli
+
+      # A throwaway localnet fee payer. `Anchor.toml` → [provider] wallet points at
+      # ~/.config/solana/id.json and the CLI refuses to start a validator-backed test
+      # without a readable keypair there. Never a funded or reused key.
+      - name: Create a localnet keypair
+        run: |
+          mkdir -p ~/.config/solana
+          solana-keygen new --no-bip39-passphrase --silent --outfile ~/.config/solana/id.json
+
+      - name: Rust gate — format
+        run: cargo fmt --all -- --check
+
+      - name: Rust gate — lints
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Rust gate — host tests
+        run: cargo test
+
+      # The point of this workflow: `anchor build` defaults to `--arch bpf`, which shells out
+      # to `cargo build-bpf` — a command Solana 1.18 does not ship, and the exact failure in
+      # docs/living-notes.md → Blockers. `--arch` is the documented escape hatch:
+      # ProgramArch::build_subcommand() maps `sbf` to `build-sbf`
+      # (anchor-cli-0.29.0/src/config.rs:421-429, flag declared at src/lib.rs:131-133).
+      - name: Build the SBF program and IDL
+        run: anchor build --arch sbf
+
+      # `anchor test` starts its own solana-test-validator (Anchor.toml → [provider]
+      # cluster = Localnet, i.e. 127.0.0.1:8899 — the same endpoint
+      # lib/solana/connection.ts → LOCALNET_RPC_URL uses) and deploys the .so from the step
+      # above. `--skip-build` stops a second SBF compile; the `.so` under test is the one that
+      # gets uploaded as an artifact.
+      - name: Run the program tests against a local validator
+        run: anchor test --arch sbf --skip-build
+
+      # `.so` and IDL only. `target/deploy/proof_of_skill-keypair.json` is a private key that
+      # `anchor build` also writes there, and `.gitignore` keeps it out of git — it must not
+      # be turned into a downloadable artifact either. Uploaded only on success, so a failed
+      # build cannot produce a plausible-looking artifact.
+      - name: Upload program artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: program-${{ github.sha }}
+          path: |
+            target/deploy/*.so
+            target/idl/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: App gate — typecheck
+        run: pnpm typecheck
+
+      - name: App gate — lint
+        run: pnpm lint
+
+      - name: App gate — unit tests
+        run: pnpm test
+
+      - name: App gate — build
+        run: pnpm build

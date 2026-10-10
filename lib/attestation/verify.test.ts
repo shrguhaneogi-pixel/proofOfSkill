@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({ default: {} }));
 
 import {
+  ATTESTATION_VERSION,
   PASS_THRESHOLD,
   attestationKey,
   encodeBase64Url,
@@ -19,12 +20,24 @@ const SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 const OTHER_SECRET = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 
 const EVIDENCE_HASH = "63c446cf82ccd52235e415b7f3de9969f75459676cd0fbb1e44041e339152b77";
-const claims: AttestationClaims = { challengeId: 1, score: 87, evidenceHash: EVIDENCE_HASH };
+
+/** Two real, distinct ed25519 addresses (seeds of all 0x01 and all 0x02). */
+const WALLET_A = "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9";
+const WALLET_B = "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu";
+
+const claims: AttestationClaims = {
+  walletPublicKey: WALLET_A,
+  challengeId: 1,
+  score: 87,
+  evidenceHash: EVIDENCE_HASH,
+};
 
 const NOW_SECONDS = 1_760_000_000;
 const TTL = 15 * 60;
 
 const payload: AttestationPayload = {
+  v: ATTESTATION_VERSION,
+  walletPublicKey: WALLET_A,
   challengeId: 1,
   score: 87,
   evidenceHash: EVIDENCE_HASH,
@@ -73,8 +86,15 @@ function accepted(result: VerifyResult, label: string): AttestationPayload {
   return result.data;
 }
 
-function verify(token: string, nowSeconds = NOW_SECONDS): VerifyResult {
-  return verifyAttestation(token, { nowSeconds });
+function verify(
+  token: string,
+  nowSeconds = NOW_SECONDS,
+  expectedWalletPublicKey?: string,
+): VerifyResult {
+  return verifyAttestation(token, {
+    nowSeconds,
+    ...(expectedWalletPublicKey === undefined ? {} : { expectedWalletPublicKey }),
+  });
 }
 
 describe("verifyAttestation", () => {
@@ -94,6 +114,61 @@ describe("verifyAttestation", () => {
 
   it("accepts a token the signer just minted and returns its claims", () => {
     expect(accepted(verify(mint()), "round trip")).toEqual(payload);
+  });
+
+  it("accepts when the caller is the wallet the token was minted for", () => {
+    const token = mint();
+    expect(accepted(verify(token, NOW_SECONDS, WALLET_A), "own wallet").walletPublicKey).toBe(
+      WALLET_A,
+    );
+  });
+
+  it("rejects a token minted for one wallet when another wallet presents it", () => {
+    const token = mint();
+    expect(rejection(verify(token, NOW_SECONDS, WALLET_B), "foreign wallet")).toBe(
+      "wallet_mismatch",
+    );
+  });
+
+  it("prefers the signature check over the wallet comparison", () => {
+    // Signed with a foreign key *and* presented by the wrong wallet: an
+    // unauthenticated body must never reach the wallet decision, so the caller
+    // learns "bad signature" and not that its wallet guess was close.
+    const foreign = mint(undefined, OTHER_SECRET);
+    expect(rejection(verify(foreign, NOW_SECONDS, WALLET_B), "unsigned foreign wallet")).toBe(
+      "invalid_signature",
+    );
+  });
+
+  it("refuses a wallet that is merely similar, not just one that is different", () => {
+    const token = mint();
+    expect(rejection(verify(token, NOW_SECONDS, `${WALLET_A.slice(0, -1)}1`), "one char off")).toBe(
+      "wallet_mismatch",
+    );
+  });
+
+  it("rejects a pre-binding token that carries no version or wallet", () => {
+    // Exactly the unstamped payload format that existed before `v` was introduced,
+    // correctly signed with the live secret. It must not be redeemable.
+    const legacy = JSON.stringify({
+      challengeId: 1,
+      score: 87,
+      evidenceHash: EVIDENCE_HASH,
+      exp: NOW_SECONDS + TTL,
+    });
+    const token = `${encodeBase64Url(legacy)}.${hmacFor(legacy)}`;
+    expect(verifyAttestation(token, { nowSeconds: NOW_SECONDS }).ok).toBe(false);
+    expect(rejection(verify(token, NOW_SECONDS, WALLET_A), "legacy v1 token")).toBe("malformed");
+  });
+
+  it("rejects a walletPublicKey that is not an address shape", () => {
+    const forged = forge({ ...payload, walletPublicKey: "0OIl+not base58" });
+    expect(rejection(verify(forged, NOW_SECONDS, WALLET_A), "non base58 wallet")).toBe("malformed");
+  });
+
+  it("rejects a version stamp this server does not issue", () => {
+    const future = forge({ ...payload, v: ATTESTATION_VERSION + 1 } as unknown as AttestationPayload);
+    expect(rejection(verify(future, NOW_SECONDS, WALLET_A), "unknown version")).toBe("malformed");
   });
 
   it("accepts right up to the last second of the window and rejects after it", () => {

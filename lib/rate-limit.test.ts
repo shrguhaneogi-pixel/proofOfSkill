@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// `server-only` resolves to a throwing stub outside a React Server bundler, so
+// it is stubbed here; production still gets the real guard.
+vi.mock("server-only", () => ({ default: {} }));
 
 import { clientKey, createRateLimiter } from "./rate-limit";
 

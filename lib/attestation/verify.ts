@@ -23,12 +23,24 @@ export type AttestationRejectionCode =
   | "invalid_signature"
   | "expired"
   | "below_threshold"
+  | "wallet_mismatch"
   | "malformed"
   | "secret_missing";
 
 export type VerifyResult =
   | { ok: true; data: AttestationPayload }
   | { ok: false; code: AttestationRejectionCode; error: string };
+
+export type VerifyOptions = {
+  nowSeconds?: number;
+  secret?: string;
+  /**
+   * The wallet the caller is acting as, canonical base58. When supplied, a token
+   * minted for any other wallet is rejected: without it a stolen or forwarded
+   * attestation could be redeemed by whoever held it.
+   */
+  expectedWalletPublicKey?: string;
+};
 
 const TOKEN_PART_COUNT = 2;
 
@@ -37,6 +49,7 @@ const REJECTION_TEXT: Record<AttestationRejectionCode, string> = {
   invalid_signature: "attestation signature does not match",
   expired: "attestation is past its expiry",
   below_threshold: "attestation score is below the pass threshold",
+  wallet_mismatch: "attestation was minted for a different wallet",
   malformed: "attestation is not a well-formed token",
   secret_missing: "attestation secret is not configured",
 };
@@ -53,7 +66,7 @@ function reject(code: AttestationRejectionCode): VerifyResult {
  */
 export function verifyAttestation(
   token: unknown,
-  options?: { nowSeconds?: number; secret?: string },
+  options?: VerifyOptions,
 ): VerifyResult {
   if (typeof token !== "string" || token.length === 0) {
     return reject("malformed");
@@ -82,6 +95,15 @@ export function verifyAttestation(
   const parsed = parsePayload(payloadJson);
   if (parsed === null) {
     return reject("malformed");
+  }
+
+  // Only a body whose signature already verified can reach this comparison, so the
+  // claimed wallet is trustworthy; it is the *caller-supplied* one that is not.
+  if (
+    options?.expectedWalletPublicKey !== undefined &&
+    parsed.walletPublicKey !== options.expectedWalletPublicKey
+  ) {
+    return reject("wallet_mismatch");
   }
 
   const nowSeconds = options?.nowSeconds ?? Math.floor(Date.now() / 1000);

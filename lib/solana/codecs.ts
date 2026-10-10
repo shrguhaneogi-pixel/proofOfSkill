@@ -113,6 +113,23 @@ export function encodeInitializeConfigData(issuer: PublicKey): Uint8Array {
   return data;
 }
 
+/**
+ * `update_config(issuer: Pubkey)` — same argument layout as `initialize_config` but its own
+ * sighash, so a rotation can never be mistaken for a first-time register.
+ *
+ * Mirrors the program's `UnusableIssuer` check here, for the same reason
+ * `encodeIssueCredentialData` mirrors its `require!`s: a transaction that is certain to
+ * revert should not cost the operator a fee.
+ */
+export function encodeUpdateConfigData(issuer: PublicKey): Result<Uint8Array> {
+  if (issuer.toBytes().every((byte) => byte === 0)) {
+    return { ok: false, error: "new issuer must not be the all-zero address" };
+  }
+  const data = allocInstructionData(INSTRUCTION_DISCRIMINATORS.updateConfig, PUBLIC_KEY_LENGTH);
+  data.set(issuer.toBytes(), DISCRIMINATOR_LENGTH);
+  return { ok: true, data };
+}
+
 /** `initialize_profile()` takes no arguments, so the payload is the discriminator alone. */
 export function encodeInitializeProfileData(): Uint8Array {
   return allocInstructionData(INSTRUCTION_DISCRIMINATORS.initializeProfile, 0);

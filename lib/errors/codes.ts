@@ -31,6 +31,7 @@ export type ErrorCode =
   | "UPSTREAM_TIMEOUT"
   | "CREDENTIAL_EXISTS"
   | "INVALID_WALLET"
+  | "WALLET_MISMATCH"
   | "ISSUER_NOT_CONFIGURED"
   | "AI_NOT_CONFIGURED"
   | "RATE_LIMITED"
@@ -74,6 +75,7 @@ export type ErrorKey =
   | "attestation_invalid_signature"
   | "attestation_expired"
   | "attestation_below_threshold"
+  | "attestation_wallet_mismatch"
   | "attestation_malformed"
   | "attestation_secret_missing"
   | "env_not_configured"
@@ -237,6 +239,11 @@ export const ERROR_CATALOG: Record<ErrorKey, ErrorEntry> = {
     code: "INVALID_ATTESTATION", status: 400, retryable: false,
     message: "This evaluation did not reach the score needed for a credential.",
     nextStep: "Work through the rubric feedback and submit again; a credential needs 70 or more.",
+  },
+  attestation_wallet_mismatch: {
+    code: "WALLET_MISMATCH", status: 403, retryable: false,
+    message: "That passing evaluation belongs to a different wallet, so it cannot be redeemed here.",
+    nextStep: "Connect the wallet that ran the evaluation, or evaluate again while connected to this one.",
   },
   attestation_malformed: {
     code: "INVALID_ATTESTATION", status: 400, retryable: false,

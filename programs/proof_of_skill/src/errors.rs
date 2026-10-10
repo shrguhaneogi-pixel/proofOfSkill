@@ -16,4 +16,9 @@ pub enum ProofError {
     MathOverflow,
     #[msg("Signer is not the program upgrade authority")]
     UnauthorizedAdmin,
+    /// Appended last on purpose: Anchor derives each error code from the variant's
+    /// position, so inserting above this would silently renumber every existing
+    /// code and break the client's error mapping.
+    #[msg("New issuer must be a key that can sign")]
+    UnusableIssuer,
 }

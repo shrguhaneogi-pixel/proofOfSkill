@@ -1,0 +1,269 @@
+{
+  "id": "b60cf3c6-3726-49c0-a1f4-c07df6e2e38b",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.challenges": {
+      "name": "challenges",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "smallint",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "difficulty": {
+          "name": "difficulty",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estimated_minutes": {
+          "name": "estimated_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prompt": {
+          "name": "prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credential_type": {
+          "name": "credential_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "challenges_slug_unique": {
+          "name": "challenges_slug_unique",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "challenges_id_in_program_range": {
+          "name": "challenges_id_in_program_range",
+          "value": "\"challenges\".\"id\" >= 1 AND \"challenges\".\"id\" <= 5"
+        },
+        "challenges_difficulty_allowed": {
+          "name": "challenges_difficulty_allowed",
+          "value": "\"challenges\".\"difficulty\" IN ('beginner', 'intermediate', 'advanced')"
+        },
+        "challenges_category_allowed": {
+          "name": "challenges_category_allowed",
+          "value": "\"challenges\".\"category\" IN ('Solana', 'Anchor', 'Web3 Frontend', 'Security')"
+        },
+        "challenges_estimated_minutes_positive": {
+          "name": "challenges_estimated_minutes_positive",
+          "value": "\"challenges\".\"estimated_minutes\" > 0"
+        },
+        "challenges_slug_not_blank": {
+          "name": "challenges_slug_not_blank",
+          "value": "char_length(btrim(\"challenges\".\"slug\")) > 0"
+        },
+        "challenges_slug_is_kebab_case": {
+          "name": "challenges_slug_is_kebab_case",
+          "value": "\"challenges\".\"slug\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'"
+        },
+        "challenges_title_not_blank": {
+          "name": "challenges_title_not_blank",
+          "value": "char_length(btrim(\"challenges\".\"title\")) > 0"
+        },
+        "challenges_description_not_blank": {
+          "name": "challenges_description_not_blank",
+          "value": "char_length(btrim(\"challenges\".\"description\")) > 0"
+        },
+        "challenges_prompt_not_blank": {
+          "name": "challenges_prompt_not_blank",
+          "value": "char_length(btrim(\"challenges\".\"prompt\")) > 0"
+        },
+        "challenges_credential_type_not_blank": {
+          "name": "challenges_credential_type_not_blank",
+          "value": "char_length(btrim(\"challenges\".\"credential_type\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.rubric_criteria": {
+      "name": "rubric_criteria",
+      "schema": "",
+      "columns": {
+        "challenge_id": {
+          "name": "challenge_id",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weight": {
+          "name": "weight",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ordinal": {
+          "name": "ordinal",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "rubric_criteria_position_unique": {
+          "name": "rubric_criteria_position_unique",
+          "columns": [
+            {
+              "expression": "challenge_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ordinal",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "rubric_criteria_challenge_id_challenges_id_fk": {
+          "name": "rubric_criteria_challenge_id_challenges_id_fk",
+          "tableFrom": "rubric_criteria",
+          "tableTo": "challenges",
+          "columnsFrom": [
+            "challenge_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "rubric_criteria_challenge_id_id_pk": {
+          "name": "rubric_criteria_challenge_id_id_pk",
+          "columns": [
+            "challenge_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "rubric_criteria_weight_positive": {
+          "name": "rubric_criteria_weight_positive",
+          "value": "\"rubric_criteria\".\"weight\" > 0"
+        },
+        "rubric_criteria_weight_within_total": {
+          "name": "rubric_criteria_weight_within_total",
+          "value": "\"rubric_criteria\".\"weight\" <= 100"
+        },
+        "rubric_criteria_ordinal_non_negative": {
+          "name": "rubric_criteria_ordinal_non_negative",
+          "value": "\"rubric_criteria\".\"ordinal\" >= 0"
+        },
+        "rubric_criteria_id_not_blank": {
+          "name": "rubric_criteria_id_not_blank",
+          "value": "char_length(btrim(\"rubric_criteria\".\"id\")) > 0"
+        },
+        "rubric_criteria_id_is_snake_case": {
+          "name": "rubric_criteria_id_is_snake_case",
+          "value": "\"rubric_criteria\".\"id\" ~ '^[a-z][a-z0-9_]{0,62}$'"
+        },
+        "rubric_criteria_label_not_blank": {
+          "name": "rubric_criteria_label_not_blank",
+          "value": "char_length(btrim(\"rubric_criteria\".\"label\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

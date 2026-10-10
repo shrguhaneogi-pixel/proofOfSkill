@@ -15,6 +15,7 @@ import {
   encodeInitializeConfigData,
   encodeInitializeProfileData,
   encodeIssueCredentialData,
+  encodeUpdateConfigData,
   type Result,
 } from "./codecs";
 
@@ -103,4 +104,35 @@ export function initializeConfigInstruction(input: InitializeConfigInput): Trans
     ],
     data: instructionData(encodeInitializeConfigData(input.issuer)),
   });
+}
+
+export type UpdateConfigInput = {
+  /** Must equal `config.admin`, which `initialize_config` fixed at creation time. */
+  admin: PublicKey;
+  issuer: PublicKey;
+  configPda: PublicKey;
+  programId: PublicKey;
+};
+
+/**
+ * `update_config` — rotates the authorized issuer on an existing Config. No `program` /
+ * `program_data` accounts: the guard is `config.admin`, not the upgrade authority, so the
+ * rotation works after the authority has been relinquished.
+ */
+export function updateConfigInstruction(input: UpdateConfigInput): Result<TransactionInstruction> {
+  const encoded = encodeUpdateConfigData(input.issuer);
+  if (!encoded.ok) {
+    return encoded;
+  }
+  return {
+    ok: true,
+    data: new TransactionInstruction({
+      programId: input.programId,
+      keys: [
+        { pubkey: input.admin, isSigner: true, isWritable: true },
+        { pubkey: input.configPda, isSigner: false, isWritable: true },
+      ],
+      data: instructionData(encoded.data),
+    }),
+  };
 }

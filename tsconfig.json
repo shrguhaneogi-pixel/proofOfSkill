@@ -6,6 +6,11 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // `scripts/seed-challenges.ts` is run as `node scripts/seed-challenges.ts`: Node 24
+    // strips the types itself, and its ESM resolver only accepts relative specifiers that
+    // name the real file. Legal here because `noEmit` is set — nothing is written to disk,
+    // so a `.ts` specifier can never point at a file that would not exist after a build.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

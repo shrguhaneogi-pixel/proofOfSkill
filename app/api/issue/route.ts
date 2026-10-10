@@ -52,21 +52,31 @@ export async function POST(request: Request) {
     return fail(400, "INVALID_WALLET", "A wallet address is required.");
   }
 
-  // The signature is checked before the payload is trusted at all, so an
+  // Canonicalised before verification so the wallet binding compares one spelling of
+  // the address rather than two encodings of the same key.
+  const wallet = parsePublicKey(body.wallet);
+  if (!wallet.ok) {
+    return fail(400, "INVALID_WALLET", "That wallet address is not a valid Solana public key.");
+  }
+  const walletPublicKey = wallet.data.toBase58();
+
+  // The signature is still checked before the payload is trusted at all, so an
   // unauthenticated body can never reach the transaction builder.
-  const verified = verifyAttestation(body.attestation);
+  const verified = verifyAttestation(body.attestation, { expectedWalletPublicKey: walletPublicKey });
   if (!verified.ok) {
+    if (verified.code === "wallet_mismatch") {
+      return fail(
+        403,
+        "WALLET_MISMATCH",
+        "That evaluation was issued to a different wallet, so it cannot be redeemed here.",
+      );
+    }
     return fail(400, "INVALID_ATTESTATION", "That evaluation can no longer be issued.");
   }
   const { challengeId, score, evidenceHash } = verified.data;
 
   if (!isChallengeId(challengeId)) {
     return fail(400, "INVALID_ATTESTATION", "That attestation names an unknown challenge.");
-  }
-
-  const wallet = parsePublicKey(body.wallet);
-  if (!wallet.ok) {
-    return fail(400, "INVALID_WALLET", "That wallet address is not a valid Solana public key.");
   }
 
   const hash = evidenceHashFromHex(evidenceHash);

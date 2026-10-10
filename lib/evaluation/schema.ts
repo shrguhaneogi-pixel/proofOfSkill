@@ -23,7 +23,16 @@ import { CHALLENGE_ID_RANGE, CODE_RANGE, EXPLANATION_RANGE, REPO_URL_PATTERN } f
  * (`node_modules/zod/v4/classic/schemas.d.ts:116`). Behaviour is identical, and
  * the numbers come from `limits.ts` so the client form cannot drift from them.
  */
+/**
+ * Shape only — `lib/solana/codecs.ts` `parsePublicKey` owns the authoritative decode, and
+ * `/api/evaluate` runs every submission through it before minting an attestation. Keeping
+ * the regex here means the browser form and the server reject the same obvious garbage
+ * without pulling web3.js into the client bundle through this module.
+ */
+const WALLET_PUBLIC_KEY_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
 export const SubmissionSchema = z.object({
+  walletPublicKey: z.string().regex(WALLET_PUBLIC_KEY_PATTERN),
   challengeId: z.int().min(CHALLENGE_ID_RANGE.min).max(CHALLENGE_ID_RANGE.max),
   explanation: z.string().trim().min(EXPLANATION_RANGE.min).max(EXPLANATION_RANGE.max),
   code: z.string().trim().min(CODE_RANGE.min).max(CODE_RANGE.max),
@@ -31,6 +40,8 @@ export const SubmissionSchema = z.object({
 });
 
 export type Submission = {
+  /** Base58 of the wallet that will own the credential, so the attestation is bound to it. */
+  walletPublicKey: string;
   challengeId: ChallengeId;
   explanation: string;
   code: string;
@@ -105,6 +116,7 @@ export function parseSubmission(value: unknown): SubmissionParseResult {
   return {
     ok: true,
     data: {
+      walletPublicKey: parsed.data.walletPublicKey,
       challengeId: parsed.data.challengeId,
       explanation: parsed.data.explanation,
       code: parsed.data.code,

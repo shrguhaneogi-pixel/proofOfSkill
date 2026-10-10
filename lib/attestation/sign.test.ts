@@ -6,6 +6,7 @@ vi.mock("server-only", () => ({ default: {} }));
 
 import {
   ATTESTATION_TTL_SECONDS,
+  ATTESTATION_VERSION,
   PASS_THRESHOLD,
   decodeBase64Url,
   keyBytesFromMaterial,
@@ -20,7 +21,16 @@ const TEST_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789a
 const EVIDENCE_HASH = "63c446cf82ccd52235e415b7f3de9969f75459676cd0fbb1e44041e339152b77";
 const OTHER_EVIDENCE_HASH = "f704cac90d02c7d0ce98e984efa5c2a42999e2a6a31c74ec3c308e090ebc9763";
 
-const claims: AttestationClaims = { challengeId: 1, score: 87, evidenceHash: EVIDENCE_HASH };
+// Two real ed25519 addresses (seeds of all 0x01 and all 0x02), so the wallet
+// binding is exercised against values that pass the address-shape check.
+const WALLET_A = "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9";
+
+const claims: AttestationClaims = {
+  walletPublicKey: WALLET_A,
+  challengeId: 1,
+  score: 87,
+  evidenceHash: EVIDENCE_HASH,
+};
 
 const NOW_SECONDS = 1_760_000_000;
 
@@ -57,8 +67,34 @@ describe("signAttestation", () => {
     const payloadJson = decodeBase64Url(payloadSegment);
     expect(payloadJson).not.toBeNull();
     expect(Object.keys(JSON.parse(payloadJson ?? "{}")).join(",")).toBe(
-      "challengeId,score,evidenceHash,exp",
+      "v,walletPublicKey,challengeId,score,evidenceHash,exp",
     );
+  });
+
+  it("stamps the version so a format change retires older tokens", () => {
+    const [payloadSegment] = signedAttestation().split(".");
+    const payload = JSON.parse(decodeBase64Url(payloadSegment) ?? "{}");
+    expect(payload.v).toBe(ATTESTATION_VERSION);
+  });
+
+  it("carries the wallet it was minted for, and differs when the wallet differs", () => {
+    const [payloadSegment] = signedAttestation().split(".");
+    const payload = JSON.parse(decodeBase64Url(payloadSegment) ?? "{}");
+    expect(payload.walletPublicKey).toBe(WALLET_A);
+
+    const otherWallet = signedAttestation({ walletPublicKey: "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu" });
+    expect(otherWallet).not.toBe(signedAttestation());
+  });
+
+  it("refuses to mint for an address that is not a Solana public key", () => {
+    for (const wallet of ["", "not-an-address", "0OIl+==", "a".repeat(31), "0OIl".repeat(12)]) {
+      const result = signAttestation({ ...claims, walletPublicKey: wallet });
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error(`expected refusal for ${JSON.stringify(wallet)}`);
+      }
+      expect(result.error).toContain("walletPublicKey");
+    }
   });
 
   it("sets exp to the pass threshold-free fifteen minute window", () => {

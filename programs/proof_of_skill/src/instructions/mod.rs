@@ -1,6 +1,7 @@
 pub mod initialize_config;
 pub mod initialize_profile;
 pub mod issue_credential;
+pub mod update_config;
 
 // Anchor 0.29 codegen emits `pub use crate::__client_accounts_<ix>;` from the
 // `#[program]` expansion, so the derive-generated modules have to be reachable
@@ -9,3 +10,4 @@ pub mod issue_credential;
 pub use initialize_config::*;
 pub use initialize_profile::*;
 pub use issue_credential::*;
+pub use update_config::*;

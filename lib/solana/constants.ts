@@ -49,6 +49,7 @@ export function isChallengeId(value: number): value is ChallengeId {
 
 export const INSTRUCTION_DISCRIMINATOR_HEX = {
   initializeConfig: "d07f1501c2bec446",
+  updateConfig: "1d9efcbf0a53db63",
   initializeProfile: "20914dd53a27fbea",
   issueCredential: "ffc1abe044abc257",
 } as const;
@@ -64,6 +65,7 @@ export type AccountName = keyof typeof ACCOUNT_DISCRIMINATOR_HEX;
 
 export const INSTRUCTION_DISCRIMINATORS: Readonly<Record<InstructionName, Uint8Array>> = {
   initializeConfig: hexToBytes(INSTRUCTION_DISCRIMINATOR_HEX.initializeConfig),
+  updateConfig: hexToBytes(INSTRUCTION_DISCRIMINATOR_HEX.updateConfig),
   initializeProfile: hexToBytes(INSTRUCTION_DISCRIMINATOR_HEX.initializeProfile),
   issueCredential: hexToBytes(INSTRUCTION_DISCRIMINATOR_HEX.issueCredential),
 };

@@ -7,8 +7,11 @@ const TEXT_99 = "a".repeat(99);
 const TEXT_100 = "a".repeat(100);
 const LONG_ENOUGH = "p".repeat(120);
 
+/** A real ed25519 address (seed of all 0x01), so submissions are wallet-bound like production. */
+const WALLET = "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9";
+
 function validBody(overrides: Record<string, unknown> = {}) {
-  return { challengeId: 1, explanation: TEXT_100, code: "fn main() {}", ...overrides };
+  return { walletPublicKey: WALLET, challengeId: 1, explanation: TEXT_100, code: "fn main() {}", ...overrides };
 }
 
 describe("SubmissionSchema", () => {
@@ -70,10 +73,41 @@ describe("SubmissionSchema", () => {
   });
 
   it("omits repoUrl from the parsed object when absent, so the hash input is stable", () => {
-    const parsed = SubmissionSchema.safeParse({ challengeId: 2, explanation: LONG_ENOUGH, code: "x" });
+    const parsed = SubmissionSchema.safeParse({
+      walletPublicKey: WALLET,
+      challengeId: 2,
+      explanation: LONG_ENOUGH,
+      code: "x",
+    });
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect("repoUrl" in parsed.data).toBe(false);
+    }
+  });
+
+  it("requires the wallet the credential will be issued to", () => {
+    const noWallet = { challengeId: 1, explanation: TEXT_100, code: "fn main() {}" };
+    const result = parseSubmission(noWallet);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.join(" ")).toContain("walletPublicKey");
+    }
+  });
+
+  it("rejects a wallet that is not a base58 address shape", () => {
+    // Length and alphabet only — `parsePublicKey` in the route is what proves the
+    // 32 byte decode, and `verify.test.ts` covers the exact-match binding.
+    for (const walletPublicKey of ["", "not-an-address", "0OIl+==", "x".repeat(8), "1".repeat(60)]) {
+      const result = parseSubmission(validBody({ walletPublicKey }));
+      expect(result.ok, `wallet ${JSON.stringify(walletPublicKey)}`).toBe(false);
+    }
+  });
+
+  it("carries the wallet through to the parsed value untouched", () => {
+    const result = parseSubmission(validBody());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.walletPublicKey).toBe(WALLET);
     }
   });
 

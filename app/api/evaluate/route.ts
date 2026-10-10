@@ -9,14 +9,26 @@ import { SubmissionSchema } from "@/lib/evaluation/schema";
 import type { EvaluationErrorCode } from "@/lib/evaluation/types";
 import { signAttestation } from "@/lib/attestation/sign";
 import { bytesToHex } from "@/lib/hashing/evidence-hash";
-import { clientKey, createRateLimiter } from "@/lib/rate-limit";
+import { parsePublicKey } from "@/lib/solana/codecs";
+import { parseUpstashConfig, createRateLimiterWithFallback, clientKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 /** Submissions are bounded by the schema, so anything larger is noise. */
 const MAX_BODY_BYTES = 20_000;
 
-const limiter = createRateLimiter({ windowMs: 10 * 60 * 1000, maxRequests: 8 });
+// Resolved on the first `check()`, not at import: `next build` evaluates this module with an
+// empty environment, and freezing the choice there would pin every runtime request to whatever
+// the build machine happened to have. Without the Upstash pair this is the same in-process
+// fixed window as before, and `describe()` says which one is live.
+const limiter = createRateLimiterWithFallback({
+  windowMs: 10 * 60 * 1000,
+  maxRequests: 8,
+  upstash: () => {
+    const config = parseUpstashConfig();
+    return config.ok ? config.config : null;
+  },
+});
 
 const STATUS_BY_CODE: Record<EvaluationErrorCode, number> = {
   AI_NOT_CONFIGURED: 503,
@@ -30,8 +42,21 @@ function fail(status: number, code: string, message: string, headers?: HeadersIn
 }
 
 export async function POST(request: Request) {
-  const limit = limiter.check(clientKey(request.headers));
+  // A Redis read cannot be synchronous, so the limiter's `check` is awaited.
+  const limit = await limiter.check(clientKey(request.headers));
   if (!limit.ok) {
+    if (limit.decline === "redis-outage") {
+      // Nobody is over budget here — the counter itself was unreachable, so every caller
+      // is being declined. 503 and a log line, rather than blaming this user for our
+      // dependency, which is what a 429 would do.
+      console.error(`rate limiter unavailable, declining request: ${limit.cause}`);
+      return fail(
+        503,
+        "RATE_LIMITED",
+        "Evaluation is not accepting requests at the moment. Try again shortly.",
+        { "retry-after": String(limit.retryAfterSeconds) },
+      );
+    }
     return fail(
       429,
       "RATE_LIMITED",
@@ -72,10 +97,20 @@ export async function POST(request: Request) {
     return fail(404, "CHALLENGE_NOT_FOUND", "No challenge exists with that id.");
   }
 
+  // The attestation is bound to this address, so the credential a later `/api/issue`
+  // co-signs can only land in the wallet that was evaluated. Canonicalised through
+  // `parsePublicKey` and re-emitted as base58 so a non-canonical spelling in the body
+  // cannot produce a token that fails to match on redemption.
+  const wallet = parsePublicKey(parsed.data.walletPublicKey);
+  if (!wallet.ok) {
+    return fail(400, "INVALID_WALLET", "That wallet address is not a valid Solana public key.");
+  }
+  const walletPublicKey = wallet.data.toBase58();
+
   // `challenge.id` carries the literal union the evaluator requires. The lookup
   // above already proved the submitted id resolves to a real challenge, so this
   // narrows the type without changing the value.
-  const submission = { ...parsed.data, challengeId: challenge.id };
+  const submission = { ...parsed.data, challengeId: challenge.id, walletPublicKey };
 
   const envResult = parseEnv();
   if (!envResult.ok) {
@@ -113,6 +148,7 @@ export async function POST(request: Request) {
   if (canMintAttestation(result)) {
     const signed = signAttestation(
       {
+        walletPublicKey: submission.walletPublicKey,
         challengeId: result.challengeId,
         score: result.score,
         evidenceHash: result.evidenceHash,

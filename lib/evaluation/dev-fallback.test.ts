@@ -17,6 +17,7 @@ import { PASS_THRESHOLD, type EvaluationResult } from "./types";
 const challenge = CHALLENGES[0];
 
 const submission: Submission = {
+  walletPublicKey: "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
   challengeId: 1,
   explanation: "A PDA is derived from seeds and the program id, so it has no private key.".padEnd(120, "."),
   code: 'let (pda, bump) = Pubkey::find_program_address(&[b"profile"], program_id);',
