@@ -152,8 +152,9 @@ function clientFor(connectionString: string): NodePgDatabase<typeof schema> {
     return pooledClient.client;
   }
   const pool = createChallengePool(connectionString);
-  // A changed URL means a new pool; the previous one is only released by
-  // `resetChallengeSource({ closePool: true })`, which the seed script calls.
+  // A changed URL means a new pool. The old one is only released by
+  // `resetChallengeSource({ closePool: true })`, which nothing calls on its own —
+  // see its note about this being a per-process cache, not a cross-process one.
   pooledClient = { connectionString, pool, client: drizzle(pool, { schema }) };
   return pooledClient.client;
 }
@@ -263,9 +264,14 @@ export async function getChallengeSource(): Promise<ChallengeSource> {
 }
 
 /**
- * Drops the cached catalogue (and, with `closePool`, the connection pool). The
- * seed script calls it so a read right after seeding sees the new rows rather than
- * a slot from before the write.
+ * Drops the cached catalogue, and with `closePool` the connection pool built from
+ * `DATABASE_URL`.
+ *
+ * The cache is per process: seeding from `scripts/seed-challenges.ts` cannot reach
+ * a running server's copy of it. A reseed is therefore visible on the next TTL
+ * expiry (at most `CACHE_TTL_MS`), immediately on a restart, or immediately if a
+ * request path calls this first — which is a wiring decision for the phase that
+ * moves the pages onto this loader.
  */
 export async function resetChallengeSource(options: { closePool?: boolean } = {}): Promise<void> {
   cacheSlot = null;

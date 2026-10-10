@@ -271,6 +271,13 @@ function toBase58(bytes: Uint8Array): string {
   return out;
 }
 
+/**
+ * The env vars layer 1 watches. This list is the maintenance point: a new secret (a database
+ * password, a signing key) is only covered once it is named here — the key-name layer catches
+ * the usual spellings (`*_PASSWORD`, `*_SECRET`, `*_TOKEN`), but an oddly named one is not
+ * scrubbed as a *value* until it is added. `.env.example` is not readable from here on purpose:
+ * redaction must not depend on a file a deployment can forget to update.
+ */
 function envSnapshot(): Record<string, string> {
   const names = ["ATTESTATION_SECRET", "AI_API_KEY", "ISSUER_PRIVATE_KEY", "OPENAI_API_KEY"];
   const sources: Record<string, string> = {};
@@ -316,7 +323,7 @@ function scrubText(text: string): string {
       out = out.split(needle.value).join(redactedByRule(`env:${needle.label}`));
     }
   }
-  out = out.replace(URL_CREDENTIAL_PATTERN, "$1[redacted]@");
+  out = out.replace(URL_CREDENTIAL_PATTERN, `$1${REDACTED}@`);
   out = out.replace(URL_SECRET_PARAM_PATTERN, "$1");
   out = out.replace(TWO_SEGMENT_TOKEN_PATTERN, redactedByRule("attestation-token"));
   return out.replace(BASE58_LONG_PATTERN, redactedByRule("base58"));

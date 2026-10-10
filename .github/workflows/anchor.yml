@@ -127,10 +127,11 @@ jobs:
             ${{ runner.os }}-rust-${{ env.RUST_TOOLCHAIN }}-anchor-${{ env.ANCHOR_VERSION }}-cargo-
 
       - name: Install Solana CLI
-        # The official release-site installer, the same URL anchor-cli itself shells out to
-        # for a `--solana-version` build (anchor-cli-0.29.0/src/lib.rs:1504). Verified live:
-        # https://release.anza.xyz/v1.18.26/install serves the POSIX installer with
-        # SOLANA_RELEASE=v1.18.26.
+        # The official release-site installer for a pinned version. anchor-cli 0.29 fetches
+        # `https://release.solana.com/v<version>/install` for a `--solana-version` build
+        # (anchor-cli-0.29.0/src/lib.rs:1504); the current release site for the 1.18 line is
+        # `release.anza.xyz`, and this exact URL was verified live from this repo (200, and the
+        # script itself declares SOLANA_RELEASE=v1.18.26).
         run: sh -c "$(curl -sSfL https://release.anza.xyz/v${SOLANA_VERSION}/install)"
 
       - name: Add Solana CLI to PATH

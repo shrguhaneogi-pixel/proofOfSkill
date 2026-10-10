@@ -467,7 +467,7 @@ describe("cross-request join key", () => {
     createLogger({ correlationId: "issue-1" }).info("issue.attestation_redeemed", { attestation: token, attestationRef: attestationRef(token) });
 
     const first = captured.record(0) as { attestationRef: string; correlationId: string };
-    const second = captured.record(1) as { attestationRef: string; correlationId: string };
+    const second = captured.record(1) as { attestation: string; attestationRef: string; correlationId: string };
     expect(first.attestationRef).toMatch(/^[0-9a-f]{12}$/);
     expect(second.attestationRef).toBe(first.attestationRef);
     expect(first.correlationId).not.toBe(second.correlationId);

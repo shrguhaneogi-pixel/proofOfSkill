@@ -191,10 +191,11 @@ type RpcFetch = NonNullable<ConnectionConfig["fetch"]>;
  * Wraps the global fetch with a per-request deadline and a status check.
  *
  * Two things web3.js v1 cannot do for itself, verified against `@solana/web3.js@1.99.0`
- * (`lib/index.esm.js:5204-5245`): it puts no `signal` on the JSON-RPC request, and it does not
- * reject a non-2xx response — it stringifies `status statusText: <body>` into an `Error`,
- * dragging a provider's HTML error page into our error text. Replacing `fetch` is the supported
- * seam (`ConnectionConfig.fetch`, `lib/index.d.ts:3232`), so both are fixed here.
+ * (`lib/index.esm.js:5204-5245`): it puts no `signal` on the JSON-RPC request, and it turns a
+ * non-2xx response into `Error("<status> <statusText>: <body>")` — dragging a provider's HTML
+ * error page, and the numeric status that `lib/errors/signals.ts` pattern-matches, into our
+ * error text. Replacing `fetch` is the supported seam (`ConnectionConfig.fetch`,
+ * `lib/index.d.ts:3234`), so both are fixed here.
  */
 function createBoundedFetch(timeoutMs: number, endpoint: string): RpcFetch {
   return async (input, init) => {

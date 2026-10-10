@@ -4,6 +4,12 @@ import { findChallenge } from "@/lib/challenges/data";
 import { parseEnv } from "@/lib/env.server";
 import { canMintAttestation, evaluationWithoutApiKey } from "@/lib/evaluation/dev-fallback";
 import { evaluateSubmission } from "@/lib/evaluation/evaluator";
+import {
+  createOctokitGitHubClient,
+  fetchRepositoryEvidence,
+  type GitHubApiClient,
+  type RepositoryEvidence,
+} from "@/lib/evaluation/github";
 import { createOpenAIClient } from "@/lib/evaluation/openai-client";
 import { SubmissionSchema } from "@/lib/evaluation/schema";
 import type { EvaluationErrorCode } from "@/lib/evaluation/types";
@@ -39,6 +45,33 @@ const STATUS_BY_CODE: Record<EvaluationErrorCode, number> = {
 
 function fail(status: number, code: string, message: string, headers?: HeadersInit) {
   return NextResponse.json({ error: { code, message } }, { status, headers });
+}
+
+/**
+ * Lazily built so the token is read on the first request, never at import: `next build`
+ * evaluates this module with an empty environment and must not capture that. An unset
+ * token is not an error — evidence is simply skipped, which is the pre-Phase-3 behaviour.
+ */
+let githubClient: GitHubApiClient | null = null;
+
+async function collectRepoEvidence(repoUrl: string | undefined): Promise<RepositoryEvidence | undefined> {
+  if (!repoUrl) {
+    return undefined;
+  }
+  githubClient ??= createOctokitGitHubClient({ token: process.env.GITHUB_TOKEN });
+  if (!githubClient.authenticated) {
+    console.error("GITHUB_TOKEN is not set; grading this submission from its text only");
+    return undefined;
+  }
+
+  const evidence = await fetchRepositoryEvidence(repoUrl, { client: githubClient });
+  if (!evidence.ok) {
+    // Deliberately not surfaced to the caller as a failure: the code, not the repo, is
+    // what was submitted. Logged so an operator can tell "no evidence" from "no repo".
+    console.error(`repository evidence skipped (${evidence.error.code}) for the submitted repoUrl`);
+    return undefined;
+  }
+  return evidence.data;
 }
 
 export async function POST(request: Request) {
@@ -128,6 +161,11 @@ export async function POST(request: Request) {
           baseURL: env.ai.baseUrl,
           model: env.ai.model,
         }),
+        undefined,
+        // Fetched here rather than inside `lib/evaluation` so the evaluator stays free of
+        // network access, and so a repo that cannot be fetched degrades to grading the
+        // submitted text instead of failing the user's submission.
+        await collectRepoEvidence(submission.repoUrl),
       )
     : await evaluationWithoutApiKey(challenge, submission, process.env.NODE_ENV);
 
