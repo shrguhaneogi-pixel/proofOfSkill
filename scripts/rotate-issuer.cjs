@@ -18,6 +18,7 @@ const {
   decodeConfig,
   readKeypair,
   readPublicKeyArg,
+  programDataAddress,
   sendAndConfirm,
   updateConfigInstruction,
 } = require("./proof-of-skill.cjs");
@@ -75,7 +76,7 @@ async function main() {
   const signature = await sendAndConfirm(
     connection,
     admin.keypair,
-    updateConfigInstruction(admin.keypair.publicKey, newIssuer),
+    updateConfigInstruction(admin.keypair.publicKey, newIssuer, programDataAddress()),
     "update_config",
   );
 

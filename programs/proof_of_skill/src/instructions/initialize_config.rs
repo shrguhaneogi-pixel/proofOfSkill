@@ -38,6 +38,11 @@ pub fn handle_initialize_config(ctx: Context<InitializeConfig>, issuer: Pubkey) 
         ctx.accounts.program_data.upgrade_authority_address == Some(admin_key),
         ProofError::UnauthorizedAdmin
     );
+    // Same invariant `update_config` enforces. Without it a Config could be *born* with the
+    // all-zero issuer, which is a valid Pubkey that can never sign: every
+    // `issue_credential` would revert with `UnauthorizedIssuer`, so issuance would be dead
+    // until the admin rotated — the failure this instruction exists to prevent.
+    require!(issuer != Pubkey::default(), ProofError::UnusableIssuer);
 
     let config = &mut ctx.accounts.config;
     config.admin = admin_key;

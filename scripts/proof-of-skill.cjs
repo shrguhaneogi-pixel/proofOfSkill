@@ -69,16 +69,20 @@ function initializeConfigInstruction(admin, issuer, programData) {
 }
 
 /**
- * `update_config` — accounts are `admin` (signer, fee payer, so writable) then the Config
- * PDA, matching `UpdateConfig` in the Rust source exactly. No program/programData: the
- * guard is `has_one = admin`, so rotation still works after the upgrade authority is gone.
+ * `update_config` — accounts are `admin` (signer, fee payer, so writable), the Config PDA,
+ * then this program and its ProgramData, matching `UpdateConfig` in the Rust source
+ * exactly. The program re-reads the *current* upgrade authority from ProgramData, so a key
+ * demoted by a later transfer or renouncement can no longer rotate; dropping these two
+ * accounts would make every rotation revert.
  */
-function updateConfigInstruction(admin, issuer) {
+function updateConfigInstruction(admin, issuer, programData) {
   return {
     programId: PROGRAM_ID,
     keys: [
       { pubkey: admin, isSigner: true, isWritable: true },
       { pubkey: configPda(), isSigner: false, isWritable: true },
+      { pubkey: PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: programData, isSigner: false, isWritable: false },
     ],
     data: encodeIssuerArg(SIGHASH.updateConfig, issuer),
   };

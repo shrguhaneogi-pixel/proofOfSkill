@@ -112,12 +112,17 @@ export type UpdateConfigInput = {
   issuer: PublicKey;
   configPda: PublicKey;
   programId: PublicKey;
+  /**
+   * This program's ProgramData. `update_config` re-reads the *current* upgrade authority
+   * from it, so a key demoted by a later transfer or renouncement can no longer rotate.
+   */
+  programData: PublicKey;
 };
 
 /**
- * `update_config` — rotates the authorized issuer on an existing Config. No `program` /
- * `program_data` accounts: the guard is `config.admin`, not the upgrade authority, so the
- * rotation works after the authority has been relinquished.
+ * `update_config` — rotates the authorized issuer on an existing Config. The guard is
+ * `config.admin` plus a live upgrade-authority check, which is why `program` and
+ * `program_data` are required here as they are for `initialize_config`.
  */
 export function updateConfigInstruction(input: UpdateConfigInput): Result<TransactionInstruction> {
   const encoded = encodeUpdateConfigData(input.issuer);
@@ -131,6 +136,8 @@ export function updateConfigInstruction(input: UpdateConfigInput): Result<Transa
       keys: [
         { pubkey: input.admin, isSigner: true, isWritable: true },
         { pubkey: input.configPda, isSigner: false, isWritable: true },
+        { pubkey: input.programId, ...NON_SIGNER_READONLY },
+        { pubkey: input.programData, ...NON_SIGNER_READONLY },
       ],
       data: instructionData(encoded.data),
     }),
